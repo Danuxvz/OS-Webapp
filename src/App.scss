@@ -1,0 +1,215 @@
+/* ============================
+   ACCESSIBILITY
+============================ */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus styles for better accessibility */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #6200ea;
+  outline-offset: 2px;
+}
+
+
+/* ============================
+   RESPONSIVE DESIGN
+============================ */
+@media (max-width: 768px) {
+  :root {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+  }
+  
+  .sidebar {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    position: relative;
+    transform: none !important;
+  }
+  
+  .sidebar.hidden {
+    display: none;
+  }
+  
+  .main {
+    margin-left: 0 !important;
+    height: auto;
+    overflow: hidden;
+  }
+    
+  .nav button {
+    flex: 1 0 calc(33.333% - 8px);
+    min-width: 0;
+  }
+  
+  .character-image {
+    width: 120px;
+    height: 120px;
+  }
+  
+  .sidebar-bottom {
+    padding: 12px;
+  }
+
+  .sidebar .row {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .main-top {
+    padding: 8px 12px;
+  }
+    
+  .entes-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  
+  .entes-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav button {
+    flex: 1 0 calc(50% - 8px);
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+  
+  .character-image {
+    width: 100px;
+    height: 100px;
+  }
+  
+  .textInput {
+    font-size: 12px;
+  }
+  
+  .stats {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  
+  .stats p {
+    text-align: left;
+  }
+}
+
+
+
+.sidebar {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+
+/* ---------------------------
+   Main area (top + content)
+   --------------------------- */
+.main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 500px;
+  overflow: hidden;
+}
+
+.main-top {
+  flex: 0 0 auto;
+}
+
+/* bottom area holds sidebar + section; must not scroll itself */
+.main-bottom {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background-color: #121212;
+}
+
+/* ---------------------------
+   CharacterSheet / Section
+   --------------------------- */
+
+.character-sheet .section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  // padding: 16px;
+  border-radius: 8px;
+  background-color: #1e1e1e;
+}
+
+/* ---------------------------
+   Entes section internals
+   --------------------------- */
+
+.entes-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* header must be sticky and always visible */
+.entes-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: inherit;          /* keeps background color matching the section */
+  padding: 8px 0;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* the only element that actually scrolls */
+.entes-scroll {
+  flex: 1 1 auto;
+  min-height: 0;                /* allows flex child to scroll correctly */
+  overflow-y: auto;             /* <-- this is where vertical scroll will appear */
+  -webkit-overflow-scrolling: touch;
+  padding-right: 8px;           /* visual breathing room for scrollbar */
+  box-sizing: border-box;
+}
+
+/* keep add button always visible in the header (if you placed it there) */
+.ente-add-static {
+  cursor: pointer;
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 8px;
+  border: 1px solid #444;
+  flex: 0 0 auto;
+}
+
+/* optional bottom footer pinned (if used) */
+.entes-footer {
+  flex: 0 0 auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 9;
+  background: inherit;
+}
+

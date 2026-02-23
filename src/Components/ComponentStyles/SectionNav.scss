@@ -1,0 +1,68 @@
+.nav {
+  flex-wrap: wrap;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.nav-burger {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  flex: 0;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-burger {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  flex: 0;
+}
+
+.tab-btn:hover {
+  background-color: #444;
+}
+
+.tab-btn.active {
+  background-color: #6200ea;
+  color: #fff;
+}
+
+.tab-btn {
+  background-color: #333;
+  color: #e0e0e0;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  flex: 1;
+}
+
+.nav button:hover {
+  background-color: #444;
+}
+
+.nav button.active {
+  background-color: #6200ea;
+  color: #fff;
+}
+
+.main-top {
+  background: #222;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+  z-index: 100;
+}

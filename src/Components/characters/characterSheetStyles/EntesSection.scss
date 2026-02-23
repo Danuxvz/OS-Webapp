@@ -1,0 +1,429 @@
+/* ============================
+   ENTES SECTION
+============================ */
+
+/* Header & Controls */
+.entes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding-bottom: 8px;
+}
+
+.entes-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.enteSort {
+	background: #222;
+	text-align: center;
+	color: #eee;
+	border: 1px solid #333;
+	padding: 4px;
+	margin: 4px;
+	border-radius: 4px;
+}
+
+/* Filter/Input */
+.enteFilter {
+  background: #222;
+  color: #eee;
+  border: 1px solid #333;
+  padding: 6px 8px;
+  border-radius: 4px;
+  width: 160px;
+}
+
+/* Ente list container */
+.ente-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 90%;
+}
+
+.ente-items-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Add new Ente button */
+.ente-add-static {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	font-weight: bold;
+	font-size: 1rem;
+	cursor: pointer;
+	background: #2a2a2a;
+	border-radius: 8px;
+	padding: 8px;
+	text-align: center;
+	border: 1px solid #444;
+	position: sticky;
+	top: 0;
+	z-index: 2;
+}
+
+/* Individual Ente item */
+.ente-item {
+  background: #161616;
+  border-radius: 8px;
+  padding: 8px;
+  width: 100%;
+  border: 1px solid #2b2b2b;
+}
+
+.add-ente-modal{
+  background: #161616;
+  border-radius: 8px;
+  padding: 8px;
+  width: 100%;
+  border: 1px solid #2b2b2b;
+}
+
+.modal-btn{
+	margin-left: 15px;
+  height: 85%;
+  border: 1px solid #333;
+	color:white;
+  background-color: #222;
+}
+
+.ente-top-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.ente-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ente-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Thumbnail */
+.ente-thumb-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ente-thumb {
+  margin-top: 6px;
+  max-width: 200px;
+  max-height: 200px;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+/* Actions */
+.ente-actions {
+  display: grid;
+  grid-template-columns: 1.2fr; /* fixed invalid value */
+}
+
+.fav-btn,
+.delete-ente-btn {
+  background: none;
+  margin-top: 21px;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: color 0.2s;
+}
+
+.fav-btn.active {
+  color: gold;
+}
+
+.delete-ente-btn {
+  color: #888;
+}
+
+.delete-ente-btn:hover {
+  color: #e74c3c;
+}
+
+/* Unlock select */
+.unlock-select,
+.template-unlock,
+#enteSort {
+  background: #222;
+  text-align: center;
+  color: #eee;
+  border: 1px solid #333;
+  padding: 4px;
+  margin: 4px;
+  border-radius: 4px;
+}
+
+/* Amount input */
+.ente-amount-input {
+  width: 26px;
+  height: 26px;
+  margin-top: 21px;
+  margin-left: 4px;
+  font-size: 12px;
+  text-align: center;
+  background: #111;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+}
+
+.ente-amount-input:focus {
+  outline: none;
+  border-color: #888;
+}
+
+.ente-amount-warning {
+  font-size: 12px;
+  line-height: 12px;
+  margin-top: 12px;
+  margin-left: 10px;
+}
+
+/* ============================
+    Grid / Stats
+============================ */
+
+.ente-grid {
+  display: grid;
+  grid-template-columns: repeat(1, 4fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.grid-slot {
+  padding: 6px;
+  background: #121212;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  min-height: 34px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.grid-slot strong {
+  display: block;
+  margin-bottom: 2px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.grid-slot {
+  position: relative;
+  padding: 6px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+  white-space: normal;
+}
+
+.grid-slot strong {
+  display: block;
+  margin-bottom: 2px;
+  font-weight: bold;
+}
+
+.skill-body {
+  white-space: pre-line;
+}
+
+.copy-slot-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  color: #ccc;
+  transition: opacity 0.2s ease, color 0.2s ease;
+  padding: 2px;
+}
+
+.grid-slot:hover .copy-slot-btn {
+  opacity: 1;
+}
+
+.copy-slot-btn:hover {
+  color: #fff;
+}
+
+/* ============================
+   Bottom Row / Notes
+============================ */
+
+.ente-bottom-row {
+  margin-top: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  position: relative;
+  width: auto;
+  margin-left: 48px;
+}
+
+/* + Add notes overlay */
+.add-notes {
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9a9a9a;
+  cursor: pointer;
+  text-align: center;
+  background: #222;
+  border-radius: 6px;
+  width: 100%;
+}
+
+/* Notes wrapper */
+.notes-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  position: relative;
+  width: 100%;
+}
+
+/* Custom image (bottom image) */
+.custom-image-area {
+  flex-shrink: 0;
+  width: 200px;
+  max-height: 180px;
+  background: #111;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid #444;
+  border-radius: 6px;
+}
+
+/* Notes textarea */
+.notes-text {
+  flex: 1;
+  min-height: 180px;
+  resize: vertical;
+  background: #1e1e1e;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 6px;
+}
+
+/* Clear (X) button */
+.clear-notes-btn {
+  position: absolute;
+  // top: 6px;
+  right: 6px;
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: #f55;
+}
+
+/* Misc */
+.ente-add-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ente-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.ente-template-body {
+  display: flex;
+  align-items: center;
+}
+
+/* ============================
+   Responsive Adjustments
+============================ */
+.entes-section {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ========================
+   SCROLL AREA
+======================== */
+
+.ente-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+/* ========================
+   BOTTOM STICKY FOOTER
+======================== */
+
+.entes-footer {
+  flex-shrink: 0;
+  padding: 8px;
+  text-align: center;
+  z-index: 5;
+}
+
+.drag-handle {
+  cursor: grab;
+  padding: 4px;
+  font-size: 18px;
+  user-select: none;
+  color: #888;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.ente-list li {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+
+

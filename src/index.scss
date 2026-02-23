@@ -1,0 +1,50 @@
+/* ============================
+   GLOBAL SCROLLBAR STYLING
+============================ */
+* {
+  scrollbar-width: thin; /* For Firefox */
+  scrollbar-color: #8c8c8d #1e1e1e;
+}
+
+/* Chrome, Edge, Safari */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #1e1e1e;
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8c8c8d 0%, #8c8c8d 100%);
+  border-radius: 8px;
+  border: 2px solid #1e1e1e;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #8c8c8d 0%, #8c8c8d 100%);
+}
+
+*::-webkit-scrollbar-corner {
+  background: #1e1e1e;
+}
+
+/* ============================
+   BASE LAYOUT
+============================ */
+:root {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #121212;
+  color: #e0e0e0;
+  overflow: hidden;
+}
+
+
+
+
+
+
+
