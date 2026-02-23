@@ -1,0 +1,40 @@
+name: Build and deploy Vite app to Azure Web App - OSInventory
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_349F0716B5514C449DA2EF89D6FC82CB }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_1B6851A7EADE4485958AEAFAC78EE341 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_60A442C57C26473E88D7E84F2A2B4D6F }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'OSInventory'
+          slot-name: 'Production'
+          package: ./dist
