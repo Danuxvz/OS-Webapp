@@ -8,7 +8,7 @@ import { db } from "../Components/characters/database/db";
 export const supabase = createClient(
 	import.meta.env.VITE_SUPABASE_URL,
 	import.meta.env.VITE_SUPABASE_ANON_KEY,
-	import.meta.env.AZURE_REDIRECT
+	import.meta.env.VITE_AZURE_REDIRECT
 );
 
 let currentSession: Session | null = null;
@@ -44,7 +44,7 @@ export async function initSupabaseAuth(): Promise<User | null> {
 export async function loginWithDiscord() {
 	await supabase.auth.signInWithOAuth({
 		provider: "discord",
-		options: { redirectTo: "AZURE_REDIRECT" }
+		options: { redirectTo: "VITE_AZURE_REDIRECT" }
 	});
 }
 
