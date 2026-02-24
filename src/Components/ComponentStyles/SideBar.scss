@@ -1,7 +1,7 @@
 .sidebar {
-  width: 20%;
-  min-width: 220px;
-  max-width: 300px;
+  width: 30%;
+  min-width: 25%;
+  max-width: 35%;
   background-color: #1e1e1e;
   display: flex;
   flex-direction: column;
@@ -122,7 +122,7 @@ body:not(.sidebar-hidden) .main {
 ============================ */
 
 	.character-image {
-		min-width: 95%;
+		min-width: 90%;
 		min-height: 220px;
 		background-color: #2a2a2a;
 		display: flex;
@@ -156,6 +156,7 @@ body:not(.sidebar-hidden) .main {
 
 	.character-info {
 		width: 100%;
+    min-width: 80%;
 		background-color: #2a2a2a;
 		border-radius: 8px;
 		padding: 12px;

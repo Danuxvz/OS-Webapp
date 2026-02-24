@@ -121,21 +121,51 @@ function getLocalImageUrl(id: string, rank: string) {
    INHERITANCE RESOLUTION
 ========================= */
 
-function resolveParentId(id: string, rank: string): string | null {
+function resolveParentId(
+  id: string,
+  rank: string,
+  hasEntry?: (candidateId: string) => boolean
+): string | null {
+  id = (id || "").toUpperCase();
 
-  id = id.toUpperCase();
-
-  // C Tier variants
+  // C Tier variants: keep existing behavior
   if (rank === "C" && /^C0\d{2}[A-Z]$/i.test(id)) {
     return id.substring(0, 4);
   }
 
-  // Special E variants
-  if (/^E\d{3}[A-Z]+$/i.test(id)) {
-    const baseKey = id.substring(0, 4);
-    if (SPECIAL_E_VARIANT_BASES[baseKey]) {
-      return SPECIAL_E_VARIANT_BASES[baseKey];
+  // Only E-tier variants use this progressive-trim inheritance
+  if (rank === "E" && /^E\d{3}[A-Z]+$/i.test(id)) {
+    // Try progressively shorter candidates (most specific -> least)
+    let candidate = id;
+
+    while (candidate.length > 4) {
+      candidate = candidate.slice(0, -1);
+
+      if (typeof hasEntry === "function") {
+        if (hasEntry(candidate)) return candidate;
+      } else {
+        return candidate;
+      }
     }
+
+    const baseKey = candidate.substring(0, 4);
+    const special = SPECIAL_E_VARIANT_BASES[baseKey];
+    if (special) {
+      if (typeof hasEntry === "function") {
+        if (hasEntry(special)) return special;
+        if (hasEntry(candidate)) return candidate;
+        return null;
+      } else {
+        return special;
+      }
+    }
+
+    if (typeof hasEntry === "function") {
+      if (hasEntry(candidate)) return candidate;
+      return null;
+    }
+
+    return candidate;
   }
 
   return null;
