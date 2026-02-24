@@ -83,6 +83,7 @@
   border-radius: 8px;
   padding: 8px;
   width: 100%;
+  min-width: 50%;
   border: 1px solid #2b2b2b;
 }
 
@@ -127,6 +128,7 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  min-width: none;
 }
 
 .ente-thumb {

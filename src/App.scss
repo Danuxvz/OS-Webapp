@@ -63,6 +63,12 @@ textarea:focus-visible {
     padding-left: 0 !important;
     padding-right: 0 !important;
   }
+
+  .row {
+    flex-wrap: nowrap;
+  }
+
+
   .main-top {
     padding: 8px 12px;
   }

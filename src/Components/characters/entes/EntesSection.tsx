@@ -93,9 +93,9 @@ function EntesSection({ characterId }: EntesSectionProps) {
 				stored.map(async (e: any) => {
 					const enteId = e.enteID ?? e.id;
 					if (!enteId) return null;
-
+					console.log("Stored ente ID:", enteId);
 					const meta = await getEnteMetadata(enteId.toString());
-					if (!meta) return null;
+					if (!meta) return null;	
 
 					try {
 						await db.enteMetadata.put({

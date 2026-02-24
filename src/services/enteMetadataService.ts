@@ -121,51 +121,21 @@ function getLocalImageUrl(id: string, rank: string) {
    INHERITANCE RESOLUTION
 ========================= */
 
-function resolveParentId(
-  id: string,
-  rank: string,
-  hasEntry?: (candidateId: string) => boolean
-): string | null {
-  id = (id || "").toUpperCase();
+function resolveParentId(id: string, rank: string): string | null {
 
-  // C Tier variants: keep existing behavior
+  id = id.toUpperCase();
+
+  // C Tier variants
   if (rank === "C" && /^C0\d{2}[A-Z]$/i.test(id)) {
     return id.substring(0, 4);
   }
 
-  // Only E-tier variants use this progressive-trim inheritance
-  if (rank === "E" && /^E\d{3}[A-Z]+$/i.test(id)) {
-    // Try progressively shorter candidates (most specific -> least)
-    let candidate = id;
-
-    while (candidate.length > 4) {
-      candidate = candidate.slice(0, -1);
-
-      if (typeof hasEntry === "function") {
-        if (hasEntry(candidate)) return candidate;
-      } else {
-        return candidate;
-      }
+  // Special E variants
+  if (/^E\d{3}[A-Z]+$/i.test(id)) {
+    const baseKey = id.substring(0, 4);
+    if (SPECIAL_E_VARIANT_BASES[baseKey]) {
+      return SPECIAL_E_VARIANT_BASES[baseKey];
     }
-
-    const baseKey = candidate.substring(0, 4);
-    const special = SPECIAL_E_VARIANT_BASES[baseKey];
-    if (special) {
-      if (typeof hasEntry === "function") {
-        if (hasEntry(special)) return special;
-        if (hasEntry(candidate)) return candidate;
-        return null;
-      } else {
-        return special;
-      }
-    }
-
-    if (typeof hasEntry === "function") {
-      if (hasEntry(candidate)) return candidate;
-      return null;
-    }
-
-    return candidate;
   }
 
   return null;
@@ -338,9 +308,35 @@ export async function getEnteMetadata(id: string): Promise<EnteMetadata | null> 
   if (!metadataIndex) {
     await buildMetadataIndex();
   }
-  return metadataIndex?.[normalizeId(id)] ?? null;
-}
 
+  const normalized = normalizeId(id);
+  const existing = metadataIndex?.[normalized];
+
+  if (existing) return existing;
+
+  // 🔥 Dynamic E-tier fallback
+  if (/^E\d{3}[A-Z]+$/i.test(normalized)) {
+    const baseKey = normalized.substring(0, 4); // E005
+    const specialBase = SPECIAL_E_VARIANT_BASES[baseKey];
+
+    if (specialBase && metadataIndex?.[specialBase]) {
+      const parent = metadataIndex[specialBase];
+
+      const generated: EnteMetadata = {
+        ...parent,
+        id: normalized,
+        image: getLocalImageUrl(normalized, parent.rank)
+      };
+
+      // cache it so we don’t regenerate repeatedly
+      metadataIndex![normalized] = generated;
+
+      return generated;
+    }
+  }
+
+  return null;
+}
 export async function refreshMetadata() {
   localStorage.removeItem(LOCAL_CACHE_KEY);
   metadataIndex = null;
