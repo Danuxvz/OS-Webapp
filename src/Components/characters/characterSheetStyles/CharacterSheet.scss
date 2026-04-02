@@ -29,3 +29,16 @@
   box-sizing: border-box;
 }
 
+@media (max-width: 768px) {
+  .main {
+    height: auto;
+    overflow: visible;
+  }
+  .main-bottom {
+    padding: 12px;
+  }
+  .character-sheet {
+    overflow: visible;
+    padding: 12px;
+  }
+}

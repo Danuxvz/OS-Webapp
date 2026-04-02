@@ -2,11 +2,10 @@
    GLOBAL SCROLLBAR STYLING
 ============================ */
 * {
-  scrollbar-width: thin; /* For Firefox */
+  scrollbar-width: thin;
   scrollbar-color: #8c8c8d #1e1e1e;
 }
 
-/* Chrome, Edge, Safari */
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -40,11 +39,12 @@
   background-color: #121212;
   color: #e0e0e0;
   overflow: hidden;
+  height: 100vh;
 }
 
-
-
-
-
-
-
+@media (max-width: 768px) {
+  :root {
+    overflow: auto;
+    height: auto;
+  }
+}

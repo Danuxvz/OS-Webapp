@@ -1,4 +1,4 @@
-// import LoadoutSection from "./loadout/LoadoutSection";
+import LoadoutSection from "./loadout/LoadoutSection";
 import EntesSection from "./entes/EntesSection";
 import InventorySection from "./inventory/InventorySection";
 
@@ -13,9 +13,9 @@ function CharacterSheet({ activeSection, characterId }: CharacterSheetProps) {
 	return (
 		<div className="character-sheet">
 			<div className="section">
-				{/* {activeSection === "loadout" && (
+				{activeSection === "loadout" && (
 					<LoadoutSection characterId={characterId} />
-				)} */}
+				)}
 
 				{activeSection === "entes" && (
 					<EntesSection characterId={characterId} />

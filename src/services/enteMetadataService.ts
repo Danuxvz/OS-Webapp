@@ -314,7 +314,6 @@ export async function getEnteMetadata(id: string): Promise<EnteMetadata | null> 
 
   if (existing) return existing;
 
-  // 🔥 Dynamic E-tier fallback
   if (/^E\d{3}[A-Z]+$/i.test(normalized)) {
     const baseKey = normalized.substring(0, 4); // E005
     const specialBase = SPECIAL_E_VARIANT_BASES[baseKey];

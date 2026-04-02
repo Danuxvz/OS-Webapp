@@ -37,12 +37,12 @@ function SectionNav({
         Entes
       </button>
 
-      {/* <button
+      <button
         className={`tab-btn ${activeSection === "loadout" ? "active" : ""}`}
         onClick={() => setActiveSection("loadout")}
       >
         Loadout
-      </button> */}
+      </button>
 
       <button
         className={`tab-btn ${activeSection === "inventario" ? "active" : ""}`}

@@ -1,0 +1,555 @@
+// ======== 
+// BASE LAYOUT 
+// ========
+.loadout-section {
+  background: transparent;
+  border-radius: 1rem;
+}
+
+.loadout-empty {
+  border-radius: 0.85rem;
+}
+
+.loadout-list {
+  grid-template-columns: 1fr;
+}
+
+.loadout-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+// ======== 
+// LOADOUT CARD 
+// ========
+.loadout-card {
+  border-radius: 1rem;
+  overflow: hidden;
+  background-color: #161616;
+  color: #f1f1f1;
+
+  .form-control {
+    background: #202020;
+    color: #f1f1f1;
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .form-control:focus {
+    background: #202020;
+    color: #f1f1f1;
+  }
+
+  .text-muted {
+    color: #b5b5b5 !important;
+  }
+
+  .btn-link {
+    text-decoration: none;
+  }
+}
+
+// ======== 
+// LOADOUT ROW COMPONENTS 
+// ========
+.loadout-row {
+  padding: 0.85rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.85rem;
+}
+
+.loadout-row-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.loadout-row-main {
+  min-height: 1.5rem;
+}
+
+.loadout-inline-input {
+  max-width: 7rem;
+}
+
+.loadout-hp-bar {
+  height: 0.7rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.loadout-hp-bar .progress-bar {
+  background: linear-gradient(90deg, #7fd36b, #4caf50);
+}
+
+.loadout-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+// ======== 
+// SLOTS 
+// ========
+.loadout-slot-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 1rem;
+}
+
+.loadout-slot-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 0.3rem;
+  color: #a7adb4;
+  transition: transform 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.loadout-slot-box.active {
+  color: #1f6feb;
+  background: rgba(31, 111, 235, 0.12);
+}
+
+.loadout-slot-box:hover {
+  transform: translateY(-1px);
+}
+
+// ======== 
+// POPUP 
+// ========
+.loadout-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 2000;
+}
+
+.loadout-popup {
+  width: min(720px, 100%);
+  border-radius: 1rem;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+// ======== 
+// HP SOURCE GRID 
+// ========
+.hp-source-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.hp-source-card {
+  cursor: pointer;
+  border-radius: 0.6rem;
+  padding: 0.4rem;
+  text-align: center;
+  background: #1b1b1b;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  user-select: none;
+
+  &:hover {
+    transform: translateY(-2px);
+    background: #2a2a2a;
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  .hp-source-image-wrapper {
+    width: 100%;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    background: #0f0f0f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.25rem;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: filter 0.2s ease;
+    }
+
+    .hp-source-placeholder {
+      font-size: 0.7rem;
+      color: #888;
+      text-align: center;
+    }
+  }
+
+  .hp-source-text {
+    font-size: 0.7rem;
+    margin-top: 0.25rem;
+    color: #aaa;
+    font-weight: 500;
+  }
+
+  &:not(.active) {
+    .hp-source-image-wrapper img {
+      filter: grayscale(100%) brightness(0.7);
+    }
+    .hp-source-text {
+      color: #666;
+    }
+  }
+
+  &.active {
+    border-color: #8224c6;
+    background: #2a2a2a;
+
+    .hp-source-image-wrapper img {
+      filter: none;
+    }
+
+    .hp-source-text {
+      color: #fff;
+    }
+  }
+}
+
+// ======== 
+// RESPONSIVE 
+// ========
+@media (max-width: 768px) {
+  .loadout-row-label {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .loadout-inline-input {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 1200px) {
+  .hp-source-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .hp-source-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .hp-source-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+// Weapon panel styles
+.weapon-top-panel {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.weapon-preview {
+  width: 100%;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.weapon-preview-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #888;
+}
+
+.weapon-fields {
+  flex: 1;
+}
+
+@media (max-width: 992px) {
+  .weapon-top-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .weapon-preview {
+    width: 100%;
+    height: 220px;
+  }
+}
+
+// HE Grid & Cards
+.he-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.he-card {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  background: #1b1b1b;
+  transition: all 0.15s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    background: #2a2a2a;
+  }
+
+  .he-image-wrapper {
+    flex-shrink: 0;
+    width: 25%;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    background: #0f0f0f;
+
+    img {
+      width: 100%;
+      object-fit: cover;
+      filter: grayscale(100%);
+      transition: filter 0.2s ease;
+    }
+
+    .he-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: #888;
+    }
+  }
+
+  .he-text {
+    flex: 1;
+    font-size: 0.8rem;
+    color: #ccc;
+    word-break: break-word;
+  }
+
+  &.active {
+    border-color: #8224c6;
+    background: #2a2a2a;
+
+    .he-image-wrapper img {
+      filter: none;
+    }
+
+    .he-text {
+      color: #fff;
+    }
+  }
+}
+
+.selected-he-list {
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+}
+
+.he-selected-card {
+  img {
+    object-fit: cover;
+    border-radius: 0.3rem;
+  }
+}
+
+.he-card-inline {
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+@media (max-width: 992px) {
+  .he-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+// ======== 
+// THEME – Purple Accent
+// ========
+.btn-primary {
+  background-color: #6200ea !important;
+  border-color: #6200ea !important;
+  &:hover {
+    background-color: #7c2df9 !important;
+    border-color: #7c2df9 !important;
+  }
+  &:focus,
+  &:active {
+    background-color: #4b00b3 !important;
+    border-color: #4b00b3 !important;
+    box-shadow: 0 0 0 0.25rem rgba(98, 0, 234, 0.25) !important;
+  }
+}
+
+.progress-bar {
+  background: #9a0606;
+}
+
+.hp-source-card.active,
+.he-card.active {
+  border-color: #6200ea;
+}
+
+// ======== 
+// SLOT INVENTORY GRID
+// ========
+.slot-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.slot-inventory-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.4rem;
+  background: #1b1b1b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-height: 0;
+}
+
+.slot-card-img {
+  width: 100%;
+  max-height: 60px;
+  object-fit: contain;
+  border-radius: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.slot-inventory-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  word-break: break-word;
+  line-height: 1.2;
+  margin-bottom: 0.25rem;
+}
+
+.slot-inventory-count {
+  font-size: 0.75rem;
+  color: #aab;
+  margin-top: auto;
+  margin-bottom: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.slot-inventory-card .d-flex {
+  width: 100%;
+  justify-content: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-top: 0;
+}
+
+.slot-inventory-card .btn {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.65rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.slot-inventory-card input {
+  width: 42px;
+  min-width: 42px;
+  text-align: center;
+  font-size: 0.65rem;
+  padding: 0.15rem;
+}
+
+@media (max-width: 1200px) {
+  .slot-inventory-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .slot-inventory-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .slot-inventory-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+// ======== 
+// SLOT GRID (in loadout card)
+// ========
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(25, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.slot-box {
+  aspect-ratio: 1 / 1;
+  display: grid;
+  place-items: center;
+  border-radius: 0.35rem;
+  background: #2a2a2a;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9rem;
+
+  &.used {
+    filter: grayscale(100%);
+    opacity: 0.45;
+  }
+
+  &:hover {
+    transform: scale(1.05);
+  }
+}
+
+.slot-box-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+@media (max-width: 900px) {
+  .slot-grid {
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+  }
+}

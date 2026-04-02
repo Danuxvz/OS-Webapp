@@ -68,3 +68,23 @@
   flex-shrink: 0;
   z-index: 100;
 }
+
+@media (max-width: 768px) {
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .nav-burger {
+    margin-right: auto;
+    max-width: 20%;
+  }
+
+  .tab-btn {
+    font-size: 14px;
+    padding: 8px 12px;
+    max-width: 25%;
+  }
+}

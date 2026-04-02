@@ -1,51 +1,58 @@
 /* ============================
    INVENTORY
 ============================ */
-
-
 .inv-section {
-	margin-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .inv-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-	gap: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
 }
 
 .inv-slot {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	background: rgba(255, 255, 255, 0.05);
-	border-radius: 8px;
-	padding: 8px;
-	text-align: center;
-	user-select: none;
-	cursor: pointer;
-	transition: background 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+  user-select: none;
+  cursor: pointer;
+  transition: background 0.2s;
 }
 
 .inv-slot:hover {
-	background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .inv-img {
-	width: 64px;
-	height: 64px;
-	filter: grayscale(1);
-	margin-bottom: 4px;
+  width: 64px;
+  height: 64px;
+  filter: grayscale(1);
+  margin-bottom: 4px;
 }
 
 .inv-label {
-	font-size: 0.85rem;
-	color: #eee;
-	margin-bottom: 2px;
+  font-size: 0.85rem;
+  color: #eee;
+  margin-bottom: 2px;
 }
 
 .inv-count {
-	font-size: 0.8rem;
-	color: #aaa;
+  font-size: 0.8rem;
+  color: #aaa;
 }
 
-
+@media (max-width: 768px) {
+  .inv-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+  }
+  .inv-img {
+    width: 48px;
+    height: 48px;
+  }
+}
