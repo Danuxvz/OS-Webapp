@@ -104,7 +104,7 @@ export interface DBLoadout extends SyncMeta {
   remoteId?: string;
   name: string;
   data: LoadoutData;
-  isDeleted?: boolean;  // Added for soft delete
+  isDeleted?: boolean;
 }
 
 /* =========================
@@ -227,7 +227,7 @@ class OpenSourceDB extends Dexie {
       }
     });
 
-    // Version 8 – patch loadout.data to include new HP and ATK fields, and add isDeleted
+    // Version 8 – patch loadout.data to include new fields and isDeleted
     this.version(8).stores({
       loadouts: `
         ++id,
@@ -258,6 +258,11 @@ class OpenSourceDB extends Dexie {
           }
           if (typeof data.hp.baseCurrent !== "number") {
             data.hp.baseCurrent = data.hp.baseMax ?? 0;
+            changed = true;
+          }
+          // Add barriers array if missing
+          if (!Array.isArray(data.hp.barriers)) {
+            data.hp.barriers = [];
             changed = true;
           }
         }

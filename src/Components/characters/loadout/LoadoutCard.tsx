@@ -6,7 +6,7 @@ import type {
   LoadoutACSource,
   LoadoutSlotSource,
 } from "../../../types";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import LoadoutPopup from "./LoadoutPopup";
 
 interface Props {
@@ -37,12 +37,43 @@ function LoadoutCard({
   const [popupSection, setPopupSection] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
 
+  // Local state for editable fields to prevent cursor jumps
+  const [localName, setLocalName] = useState(loadout.name);
+  const [localHpCurrent, setLocalHpCurrent] = useState(
+    String(loadout.data.hp?.baseCurrent ?? 0)
+  );
+  const [localBarrierAmounts, setLocalBarrierAmounts] = useState<
+    Record<string, string>
+  >(() => {
+    const barriers = loadout.data.hp?.barriers ?? [];
+    const map: Record<string, string> = {};
+    barriers.forEach((b) => {
+      map[b.id] = String(b.amount);
+    });
+    return map;
+  });
+  const [localNotes, setLocalNotes] = useState(loadout.data.notes ?? "");
+
+  // Sync local state only when switching to a different loadout (not on every render)
+  useEffect(() => {
+    setLocalName(loadout.name);
+    setLocalHpCurrent(String(loadout.data.hp?.baseCurrent ?? 0));
+    setLocalNotes(loadout.data.notes ?? "");
+    const barriers = loadout.data.hp?.barriers ?? [];
+    const newMap: Record<string, string> = {};
+    barriers.forEach((b) => {
+      newMap[b.id] = String(b.amount);
+    });
+    setLocalBarrierAmounts(newMap);
+  }, [loadout.id]);
+
   const hp = loadout.data.hp ?? {
     baseMax: 0,
     baseCurrent: 0,
     tempBonus: 0,
     characterTempBonus: 0,
     sources: [],
+    barriers: [],
   };
   const atk = loadout.data.atk ?? {
     base: 0,
@@ -180,6 +211,78 @@ function LoadoutCard({
     }
   };
 
+  // ---------- Barriers helpers ----------
+  const barriers = hp.barriers ?? [];
+
+  const updateHp = (nextHp: typeof hp) => {
+    onUpdate({
+      ...loadout,
+      data: {
+        ...loadout.data,
+        hp: nextHp,
+      },
+    });
+  };
+
+  const updateBarrier = (id: string, amount: number) => {
+    updateHp({
+      ...hp,
+      barriers: barriers.map((b) =>
+        b.id === id ? { ...b, amount: Math.max(0, amount) } : b
+      ),
+    });
+  };
+
+  const deleteBarrier = (id: string) => {
+    updateHp({
+      ...hp,
+      barriers: barriers.filter((b) => b.id !== id),
+    });
+  };
+
+  const commitName = () => {
+    if (localName !== loadout.name) {
+      onUpdate({
+        ...loadout,
+        name: localName,
+      });
+    }
+  };
+
+  const commitHpCurrent = () => {
+    const num = Number(localHpCurrent);
+    if (!isNaN(num) && num !== hp.baseCurrent) {
+      updateHp({
+        ...hp,
+        baseCurrent: num,
+      });
+    }
+  };
+
+  const commitBarrier = (id: string) => {
+    const raw = localBarrierAmounts[id];
+    const num = Number(raw);
+    if (!isNaN(num) && num !== barriers.find((b) => b.id === id)?.amount) {
+      updateBarrier(id, num);
+    }
+  };
+
+  const commitNotes = () => {
+    if (localNotes !== notes) {
+      onUpdate({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          notes: localNotes,
+        },
+      });
+    }
+  };
+
+  const handleBarrierLocalChange = (id: string, value: string) => {
+    setLocalBarrierAmounts((prev) => ({ ...prev, [id]: value }));
+  };
+
   return (
     <div className="loadout-card card shadow-sm border-0">
       <div className="card-body">
@@ -188,13 +291,9 @@ function LoadoutCard({
             {configOpen ? (
               <input
                 className="form-control form-control-lg mb-2"
-                value={loadout.name}
-                onChange={(e) =>
-                  onUpdate({
-                    ...loadout,
-                    name: e.target.value,
-                  })
-                }
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                onBlur={commitName}
               />
             ) : (
               <h3 className="h5 mb-1">{loadout.name}</h3>
@@ -210,34 +309,48 @@ function LoadoutCard({
           </button>
         </div>
 
+        {/* HP section */}
         <div className="mb-2">
+          {/* Red HP bar */}
           <div className="progress mb-2" style={{ height: "0.7rem" }}>
             <div
               className="progress-bar"
               style={{ width: `${Math.max(0, Math.min(hpPercent, 100))}%` }}
             />
           </div>
-          <div className="d-flex align-items-center gap-2 flex-wrap">
+
+          {/* Blue barrier bars */}
+          {barriers.length > 0 && (
+            <div className="mt-1">
+              {barriers.map((barrier) => {
+                const pct = totalHP > 0 ? Math.min((barrier.amount / totalHP) * 100, 100) : 0;
+                return (
+                  <div key={barrier.id} className="mb-1">
+                    <div className="progress" style={{ height: "0.25rem" }}>
+                      <div
+                        className="progress-bar bg-info"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* HP current/max row + barrier inputs inline */}
+          <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
             <span className="fw-semibold">HP:</span>
             <input
               className="form-control form-control-sm"
               style={{ maxWidth: "7rem" }}
-              value={hp.baseCurrent}
-              onChange={(e) =>
-                onUpdate({
-                  ...loadout,
-                  data: {
-                    ...loadout.data,
-                    hp: {
-                      ...hp,
-                      baseCurrent: Number(e.target.value),
-                    },
-                  },
-                })
-              }
+              value={localHpCurrent}
+              onChange={(e) => setLocalHpCurrent(e.target.value)}
+              onBlur={commitHpCurrent}
             />
             <span className="text-muted">/ {totalHP}</span>
 
+            {/* Config button for HP popup */}
             {configOpen && (
               <button
                 className="btn btn-link btn-sm p-0"
@@ -246,6 +359,30 @@ function LoadoutCard({
                 ⚙
               </button>
             )}
+
+            {/* Barrier amount inputs (always visible) */}
+            {barriers.map((barrier) => (
+              <div key={barrier.id} className="d-flex align-items-center gap-1">
+                <input
+                  className="form-control form-control-sm ms-4"
+                  style={{ maxWidth: "3rem" }}
+                  type="text"
+                  value={localBarrierAmounts[barrier.id] ?? ""}
+                  onChange={(e) => handleBarrierLocalChange(barrier.id, e.target.value)}
+                  onBlur={() => commitBarrier(barrier.id)}
+                />
+                {/* Delete button only in config mode */}
+                {configOpen && (
+                  <button
+                    className="btn btn-outline-danger btn-sm"
+                    onClick={() => deleteBarrier(barrier.id)}
+                    title="Eliminar barrera"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
@@ -389,17 +526,10 @@ function LoadoutCard({
             <textarea
               className="form-control form-control-sm mt-1"
               rows={3}
-              value={notes}
+              value={localNotes}
+              onChange={(e) => setLocalNotes(e.target.value)}
+              onBlur={commitNotes}
               placeholder="Loadout notes..."
-              onChange={(e) =>
-                onUpdate({
-                  ...loadout,
-                  data: {
-                    ...loadout.data,
-                    notes: e.target.value,
-                  },
-                })
-              }
             />
           ) : (
             <div className="text-muted small mt-1">

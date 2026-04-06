@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import type { Loadout, LoadoutWeaponSource } from "../../../../types";
 
 interface Props {
@@ -16,6 +17,19 @@ function WeaponSection({ loadout, weaponSources, onSave }: Props) {
     damageBonus: 0,
     image: "",
   };
+
+  // Local state for editable fields
+  const [localName, setLocalName] = useState(weapon.name);
+  const [localDamage, setLocalDamage] = useState(String(weapon.damageBonus));
+  const [localSize, setLocalSize] = useState(weapon.size);
+  const [localType, setLocalType] = useState(weapon.type);
+
+  useEffect(() => {
+    setLocalName(weapon.name);
+    setLocalDamage(String(weapon.damageBonus));
+    setLocalSize(weapon.size);
+    setLocalType(weapon.type);
+  }, [loadout.id, weapon.name, weapon.damageBonus, weapon.size, weapon.type]);
 
   const selectedWeapon = weapon.enteId
     ? weaponSources.find((w) => w.enteId === weapon.enteId) || null
@@ -55,6 +69,67 @@ function WeaponSection({ loadout, weaponSources, onSave }: Props) {
     });
   };
 
+  const commitName = () => {
+    if (localName !== weapon.name) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          weapon: {
+            ...weapon,
+            name: localName,
+          },
+        },
+      });
+    }
+  };
+
+  const commitDamage = () => {
+    const num = Number(localDamage);
+    if (!isNaN(num) && num !== weapon.damageBonus) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          weapon: {
+            ...weapon,
+            damageBonus: num,
+          },
+        },
+      });
+    }
+  };
+
+  const commitSize = () => {
+    if (localSize !== weapon.size) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          weapon: {
+            ...weapon,
+            size: localSize,
+          },
+        },
+      });
+    }
+  };
+
+  const commitType = () => {
+    if (localType !== weapon.type) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          weapon: {
+            ...weapon,
+            type: localType,
+          },
+        },
+      });
+    }
+  };
+
   return (
     <>
       <h3 className="h5 mb-3">Anrima</h3>
@@ -75,19 +150,9 @@ function WeaponSection({ loadout, weaponSources, onSave }: Props) {
               <input
                 className="form-control"
                 type="text"
-                value={weapon.name}
-                onChange={(e) =>
-                  onSave({
-                    ...loadout,
-                    data: {
-                      ...loadout.data,
-                      weapon: {
-                        ...weapon,
-                        name: e.target.value,
-                      },
-                    },
-                  })
-                }
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                onBlur={commitName}
               />
             </div>
 
@@ -96,21 +161,9 @@ function WeaponSection({ loadout, weaponSources, onSave }: Props) {
               <input
                 className="form-control"
                 type="text"
-                inputMode="numeric"
-                value={String(weapon.damageBonus ?? 0)}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/[^\d]/g, "");
-                  onSave({
-                    ...loadout,
-                    data: {
-                      ...loadout.data,
-                      weapon: {
-                        ...weapon,
-                        damageBonus: digits === "" ? 0 : Number(digits),
-                      },
-                    },
-                  });
-                }}
+                value={localDamage}
+                onChange={(e) => setLocalDamage(e.target.value)}
+                onBlur={commitDamage}
               />
             </div>
 
@@ -119,19 +172,9 @@ function WeaponSection({ loadout, weaponSources, onSave }: Props) {
                 <label className="form-label">Size</label>
                 <select
                   className="form-select"
-                  value={weapon.size}
-                  onChange={(e) =>
-                    onSave({
-                      ...loadout,
-                      data: {
-                        ...loadout.data,
-                        weapon: {
-                          ...weapon,
-                          size: e.target.value,
-                        },
-                      },
-                    })
-                  }
+                  value={localSize}
+                  onChange={(e) => setLocalSize(e.target.value)}
+                  onBlur={commitSize}
                 >
                   <option value="">Select</option>
                   <option value="Small">Small</option>
@@ -144,19 +187,9 @@ function WeaponSection({ loadout, weaponSources, onSave }: Props) {
                 <label className="form-label">Type</label>
                 <select
                   className="form-select"
-                  value={weapon.type}
-                  onChange={(e) =>
-                    onSave({
-                      ...loadout,
-                      data: {
-                        ...loadout.data,
-                        weapon: {
-                          ...weapon,
-                          type: e.target.value,
-                        },
-                      },
-                    })
-                  }
+                  value={localType}
+                  onChange={(e) => setLocalType(e.target.value)}
+                  onBlur={commitType}
                 >
                   <option value="">Select</option>
                   <option value="Espadas">Espadas</option>

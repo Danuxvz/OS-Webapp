@@ -308,6 +308,7 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
           tempBonus: 0,
           characterTempBonus: character.tempStatBonus.hp,
           sources: currentHpSources.map((s) => ({ ...s, enabled: true })),
+          barriers: [], // initialize empty barriers
         },
         atk: {
           base: character.baseStats.atk,

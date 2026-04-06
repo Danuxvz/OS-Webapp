@@ -35,12 +35,18 @@ export interface LoadoutStatSource {
 
 export type LoadoutHpSource = LoadoutStatSource;
 
+export interface LoadoutBarrier {
+  id: string;
+  amount: number;
+}
+
 export interface LoadoutHP {
   baseMax: number;
   baseCurrent: number;
   tempBonus: number;
   characterTempBonus: number;
   sources: LoadoutHpSource[];
+  barriers: LoadoutBarrier[];
 }
 
 export interface LoadoutATK {
@@ -111,7 +117,7 @@ export interface LoadoutSlotSource {
 export interface LoadoutSlotCard {
   cardId: string;
   quantity: number;
-  usedIndices: number[];  // ← NEW: individual slot usage
+  usedIndices: number[];
 }
 
 export interface LoadoutSlots {
@@ -144,6 +150,7 @@ export interface LoadoutData {
 
 export interface Loadout {
   id: string;
+  remoteId?: string;
   characterId: number;
   name: string;
   data: LoadoutData;

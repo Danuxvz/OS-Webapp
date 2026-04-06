@@ -178,7 +178,7 @@ export async function pushLocalChanges() {
       }
 
       /* =========================
-           LOADOUTS (DELETE + UPSERT)
+           LOADOUTS (ID‑BASED DELETE + UPSERT)
       ========================= */
 
       const localLoadouts = await db.loadouts
@@ -186,44 +186,70 @@ export async function pushLocalChanges() {
         .equals(char.id!)
         .toArray();
 
-      // Delete soft-deleted loadouts from remote
+      // Delete soft-deleted loadouts from remote (by ID if available)
       const deleted = localLoadouts.filter((l) => l.isDeleted);
       for (const l of deleted) {
-        const { error } = await supabase
-          .from("loadouts")
-          .delete()
-          .eq("character_id", remoteCharId)
-          .eq("name", l.name);
-
-        if (!error) {
-          await db.loadouts.delete(l.id!);
+        if (l.remoteId) {
+          const { error } = await supabase
+            .from("loadouts")
+            .delete()
+            .eq("id", l.remoteId);
+          if (!error) {
+            await db.loadouts.delete(l.id!);
+          } else {
+            console.warn("Failed to delete loadout", l.name, error);
+          }
         } else {
-          console.warn("Failed to delete loadout", l.name, error);
+          // No remoteId, just remove locally
+          await db.loadouts.delete(l.id!);
         }
       }
 
-      // Upsert active loadouts
+      // Upsert active loadouts using ID conflict
       const active = localLoadouts.filter((l) => !l.isDeleted);
       if (active.length > 0 && remoteCharId) {
-        const records = active.map((l) => ({
-          character_id: remoteCharId,
-          name: l.name,
-          hp: l.data.hp,
-          atk: l.data.atk,
-          weapon: l.data.weapon,
-          habilidades_pasivas: l.data.habilidadesPasivas?.selectedIds ?? [], // ✅ FIX: send only selectedIds array
-          armor_class: l.data.armorClass,
-          slots: l.data.slots,
-          notes: l.data.notes ?? null,
-          updated_at: new Date(l.updatedAt).toISOString(),
-        }));
+        const records = active.map((l) => {
+          const payload: any = {
+            character_id: remoteCharId,
+            name: l.name,
+            hp: l.data.hp,
+            atk: l.data.atk,
+            weapon: l.data.weapon,
+            habilidades_pasivas: l.data.habilidadesPasivas?.selectedIds ?? [],
+            armor_class: l.data.armorClass,
+            slots: l.data.slots,
+            notes: l.data.notes ?? null,
+            updated_at: new Date(l.updatedAt).toISOString(),
+          };
+          // Include remoteId if we have it
+          if (l.remoteId) {
+            payload.id = l.remoteId;
+          }
+          return payload;
+        });
 
-        const { error } = await supabase
+        const { data: upsertedData, error } = await supabase
           .from("loadouts")
-          .upsert(records, { onConflict: "character_id,name" });
+          .upsert(records, { onConflict: "id" })
+          .select();
 
         if (error) {
           console.warn("pushLocalChanges: loadouts upsert error", error);
+        } else if (upsertedData) {
+          // Assign remote IDs to newly created loadouts
+          for (const remote of upsertedData) {
+            const local = active.find(
+              (l) =>
+                !l.remoteId &&
+                l.name === remote.name &&
+                l.characterId === char.id
+            );
+            if (local) {
+              await db.loadouts.update(local.id!, {
+                remoteId: remote.id,
+              });
+            }
+          }
         }
       }
 
@@ -781,7 +807,7 @@ async function pullRemoteEntes() {
 }
 
 /* =========================
-   PULL REMOTE LOADOUTS
+   PULL REMOTE LOADOUTS (ID‑BASED)
 ========================= */
 
 async function pullRemoteLoadouts() {
@@ -812,37 +838,44 @@ async function pullRemoteLoadouts() {
     if (!remoteLoadouts) continue;
 
     for (const remote of remoteLoadouts) {
+      // Match by remoteId
       const existing = await db.loadouts
-        .where("[characterId+name]")
-        .equals([localChar.id!, remote.name])
+        .where("remoteId")
+        .equals(remote.id)
         .first();
 
       const remoteTime = new Date(remote.updated_at).getTime();
 
-      const mapped = {
-        characterId: localChar.id!,
-        name: remote.name,
-        data: {
-          hp: remote.hp,
-          atk: remote.atk,
-          weapon: remote.weapon,
-          // ✅ FIX: reconstruct LoadoutHE object from the array
-          habilidadesPasivas: {
-            max: 2, // default; can be adjusted later
-            selectedIds: remote.habilidades_pasivas ?? [],
-          },
-          armorClass: remote.armor_class,
-          slots: remote.slots,
-          notes: remote.notes ?? "",
+      const mappedData = {
+        hp: remote.hp,
+        atk: remote.atk,
+        weapon: remote.weapon,
+        habilidadesPasivas: {
+          max: 2,
+          selectedIds: remote.habilidades_pasivas ?? [],
         },
-        updatedAt: remoteTime,
-        isDirty: false,
+        armorClass: remote.armor_class,
+        slots: remote.slots,
+        notes: remote.notes ?? "",
       };
 
       if (!existing) {
-        await db.loadouts.add(mapped);
+        await db.loadouts.add({
+          remoteId: remote.id,
+          characterId: localChar.id!,
+          name: remote.name,
+          data: mappedData,
+          updatedAt: remoteTime,
+          isDirty: false,
+          isDeleted: false,
+        });
       } else if (remoteTime > existing.updatedAt) {
-        await db.loadouts.update(existing.id!, mapped);
+        await db.loadouts.update(existing.id!, {
+          name: remote.name,
+          data: mappedData,
+          updatedAt: remoteTime,
+          isDirty: false,
+        });
       }
     }
   }

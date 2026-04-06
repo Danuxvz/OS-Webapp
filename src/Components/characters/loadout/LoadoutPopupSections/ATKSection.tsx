@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { Loadout, LoadoutHpSource } from "../../../../types";
 
 interface Props {
@@ -14,6 +14,12 @@ function ATKSection({ loadout, atkSources, onSave }: Props) {
     characterTempBonus: 0,
     sources: [],
   };
+
+  const [localTempBonus, setLocalTempBonus] = useState(String(atk.tempBonus));
+
+  useEffect(() => {
+    setLocalTempBonus(String(atk.tempBonus));
+  }, [loadout.id, atk.tempBonus]);
 
   const mergedAtkSources = useMemo(() => {
     const savedMap = new Map((atk.sources ?? []).map((s) => [s.enteId, s]));
@@ -61,6 +67,22 @@ function ATKSection({ loadout, atkSources, onSave }: Props) {
     );
   };
 
+  const commitTempBonus = () => {
+    const num = Number(localTempBonus);
+    if (!isNaN(num) && num !== atk.tempBonus) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          atk: {
+            ...atk,
+            tempBonus: num,
+          },
+        },
+      });
+    }
+  };
+
   return (
     <>
       <h3 className="h5 mb-3">Edit ATK</h3>
@@ -69,20 +91,10 @@ function ATKSection({ loadout, atkSources, onSave }: Props) {
         <label className="form-label">Loadout Temp Bonus</label>
         <input
           className="form-control"
-          type="number"
-          value={atk.tempBonus}
-          onChange={(e) =>
-            onSave({
-              ...loadout,
-              data: {
-                ...loadout.data,
-                atk: {
-                  ...atk,
-                  tempBonus: Number(e.target.value),
-                },
-              },
-            })
-          }
+          type="text"
+          value={localTempBonus}
+          onChange={(e) => setLocalTempBonus(e.target.value)}
+          onBlur={commitTempBonus}
         />
       </div>
 

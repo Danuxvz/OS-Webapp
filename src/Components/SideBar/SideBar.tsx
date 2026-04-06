@@ -35,7 +35,7 @@ function ControlPanel({
 	const [discordUser, setDiscordUser] = useState<DiscordUser | null>(null);
 
 	/* =========================
-				FETCH LOGGED IN DISCORD USER
+		FETCH LOGGED IN DISCORD USER
 	========================= */
 	useEffect(() => {
 		async function fetchUser() {
@@ -46,7 +46,7 @@ function ControlPanel({
 	}, []);
 
 	/* =========================
-				MANAGE CHARACTERS
+		MANAGE CHARACTERS
 	========================= */
 	const handleAddCharacter = async () => {
 		const name = "New Character";
@@ -75,7 +75,7 @@ function ControlPanel({
 
 
 	/* =========================
-				LOGOUT HANDLER
+		LOGOUT HANDLER
 	========================= */
 	const handleLogout = async () => {
 		await logout();
@@ -140,23 +140,25 @@ function ControlPanel({
 
 			{/* BOTTOM: CHARACTER LIST */}
 			<div className="sidebar-bottom p-3">
-				{characters.map((char) => (
-					<CharacterDetails
-						key={char.id}
-						character={char}
-						isActive={char.id === activeCharacterId}
-						onSelect={() => setActiveCharacterId(char.id!)}
-					/>
-				))}
+				<div className="character-list">
+					{characters.map((char) => (
+						<CharacterDetails
+							key={char.id}
+							character={char}
+							isActive={char.id === activeCharacterId}
+							onSelect={() => setActiveCharacterId(char.id!)}
+						/>
+					))}
 
-				{/* Add New Character Button */}
-				<div className="mt-3 d-grid">
-					<button
-						className="btn text-white add-character-btn"
-						onClick={handleAddCharacter}
-					>
-						+ Add New Character
-					</button>
+					{/* Add New Character Button */}
+					<div className="mt-3 d-grid">
+						<button
+							className="btn text-white add-character-btn"
+							onClick={handleAddCharacter}
+						>
+							+ Add New Character
+						</button>
+					</div>
 				</div>
 			</div>
 		</>

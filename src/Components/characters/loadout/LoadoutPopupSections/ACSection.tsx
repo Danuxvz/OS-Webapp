@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import type { Loadout, LoadoutACSource, ArmorType } from "../../../../types";
 
 interface Props {
@@ -15,6 +16,18 @@ function ACSection({ loadout, acSources, onSave }: Props) {
     text: "",
     image: "",
   };
+
+  const [localType, setLocalType] = useState(armorClass.type);
+  const [localName, setLocalName] = useState(armorClass.name);
+  const [localBonus, setLocalBonus] = useState(String(armorClass.bonus));
+  const [localText, setLocalText] = useState(armorClass.text);
+
+  useEffect(() => {
+    setLocalType(armorClass.type);
+    setLocalName(armorClass.name);
+    setLocalBonus(String(armorClass.bonus));
+    setLocalText(armorClass.text);
+  }, [loadout.id, armorClass.type, armorClass.name, armorClass.bonus, armorClass.text]);
 
   const parseAcMeta = (raw: string | undefined): { type: ArmorType; name: string; bonus: number; text: string } => {
     const text = (raw ?? "").trim();
@@ -81,6 +94,67 @@ function ACSection({ loadout, acSources, onSave }: Props) {
     });
   };
 
+  const commitType = () => {
+    if (localType !== armorClass.type) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          armorClass: {
+            ...armorClass,
+            type: localType as ArmorType,
+          },
+        },
+      });
+    }
+  };
+
+  const commitName = () => {
+    if (localName !== armorClass.name) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          armorClass: {
+            ...armorClass,
+            name: localName,
+          },
+        },
+      });
+    }
+  };
+
+  const commitBonus = () => {
+    const num = Number(localBonus);
+    if (!isNaN(num) && num !== armorClass.bonus) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          armorClass: {
+            ...armorClass,
+            bonus: num,
+          },
+        },
+      });
+    }
+  };
+
+  const commitText = () => {
+    if (localText !== armorClass.text) {
+      onSave({
+        ...loadout,
+        data: {
+          ...loadout.data,
+          armorClass: {
+            ...armorClass,
+            text: localText,
+          },
+        },
+      });
+    }
+  };
+
   return (
     <>
       <h3 className="h5 mb-3">Armor Class</h3>
@@ -100,19 +174,9 @@ function ACSection({ loadout, acSources, onSave }: Props) {
               <label className="form-label">AC Type</label>
               <select
                 className="form-select"
-                value={armorClass.type}
-                onChange={(e) =>
-                  onSave({
-                    ...loadout,
-                    data: {
-                      ...loadout.data,
-                      armorClass: {
-                        ...armorClass,
-                        type: e.target.value as ArmorType,
-                      },
-                    },
-                  })
-                }
+                value={localType}
+                onChange={(e) => setLocalType(e.target.value as ArmorType)}
+                onBlur={commitType}
               >
                 <option value="Custom">Custom</option>
                 <option value="Lowgear">Lowgear</option>
@@ -125,19 +189,9 @@ function ACSection({ loadout, acSources, onSave }: Props) {
               <label className="form-label">AC Name</label>
               <input
                 className="form-control"
-                value={armorClass.name}
-                onChange={(e) =>
-                  onSave({
-                    ...loadout,
-                    data: {
-                      ...loadout.data,
-                      armorClass: {
-                        ...armorClass,
-                        name: e.target.value,
-                      },
-                    },
-                  })
-                }
+                value={localName}
+                onChange={(e) => setLocalName(e.target.value)}
+                onBlur={commitName}
               />
             </div>
 
@@ -146,21 +200,9 @@ function ACSection({ loadout, acSources, onSave }: Props) {
               <input
                 className="form-control"
                 type="text"
-                inputMode="numeric"
-                value={String(armorClass.bonus ?? 1)}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/[^\d]/g, "");
-                  onSave({
-                    ...loadout,
-                    data: {
-                      ...loadout.data,
-                      armorClass: {
-                        ...armorClass,
-                        bonus: digits === "" ? 0 : Number(digits),
-                      },
-                    },
-                  });
-                }}
+                value={localBonus}
+                onChange={(e) => setLocalBonus(e.target.value)}
+                onBlur={commitBonus}
               />
             </div>
 
@@ -169,19 +211,9 @@ function ACSection({ loadout, acSources, onSave }: Props) {
               <textarea
                 className="form-control"
                 rows={4}
-                value={armorClass.text}
-                onChange={(e) =>
-                  onSave({
-                    ...loadout,
-                    data: {
-                      ...loadout.data,
-                      armorClass: {
-                        ...armorClass,
-                        text: e.target.value,
-                      },
-                    },
-                  })
-                }
+                value={localText}
+                onChange={(e) => setLocalText(e.target.value)}
+                onBlur={commitText}
               />
             </div>
 
