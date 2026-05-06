@@ -202,36 +202,42 @@ async updateEntesOrder(
 	}
 
 	async removeEnte(characterId: number, enteID: string, amount = 1) {
-		const existing = await db.entes
-			.where("[characterId+enteID]")
-			.equals([characterId, enteID])
-			.first();
+	const existing = await db.entes
+		.where("[characterId+enteID]")
+		.equals([characterId, enteID])
+		.first();
 
-		if (!existing) return;
+	if (!existing || existing.isDeleted) return;
 
-		const newAmount = Math.max(0, existing.amount - amount);
+	const newAmount = Math.max(0, existing.amount - amount);
 
-		if (newAmount === 0) {
-			await db.entes.delete(existing.id!);
-		} else {
-			await db.entes.update(existing.id!, {
-				amount: newAmount,
-				updatedAt: Date.now(),
-				isDirty: true,
-			});
-			triggerAutoSync();
-		}
+	if (newAmount === 0) {
+		await db.entes.update(existing.id!, {
+		amount: 0,
+		isDeleted: true,
+		isDirty: true,
+		updatedAt: Date.now(),
+		});
+	} else {
+		await db.entes.update(existing.id!, {
+		amount: newAmount,
+		isDirty: true,
+		updatedAt: Date.now(),
+		});
+	}
+	triggerAutoSync();
 
-		await this.recalculateCharacterBonuses(characterId);
-		const entes = await this.getEntes(characterId);
-		this.emit("entesUpdated", { characterId, entes });
+	await this.recalculateCharacterBonuses(characterId);
+	const entes = await this.getEntes(characterId);
+	this.emit("entesUpdated", { characterId, entes });
 	}
 
 	async getEntes(characterId: number) {
-		if (characterId == null) return [];
-		return db.entes
+	if (characterId == null) return [];
+	return db.entes
 		.where("characterId")
 		.equals(characterId)
+		.filter(e => !e.isDeleted)
 		.sortBy("order");
 	}
 

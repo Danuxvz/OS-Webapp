@@ -95,7 +95,7 @@ export async function pushLocalChanges() {
       }
 
       /* =========================
-           UPSERT ENTES
+           UPSERT ENTES (including soft‑delete propagation)
       ========================= */
 
       if (!remoteCharId) continue;
@@ -105,36 +105,61 @@ export async function pushLocalChanges() {
         .equals(char.id!)
         .toArray();
 
-      if (localEntes.length > 0) {
-        const uniqueMap = new Map<string, any>();
+      if (localEntes.length > 0 && remoteCharId) {
+        const deletedEntes = localEntes.filter(e => e.isDeleted);
+        const activeEntes = localEntes.filter(e => !e.isDeleted);
 
-        for (const ente of localEntes) {
-          const key = `${remoteCharId}_${ente.enteID}`;
-
-          uniqueMap.set(key, {
-            character_id: remoteCharId,
-            ente_id: ente.enteID,
-            amount: ente.amount,
-            favorite: ente.favorite,
-            order: ente.order,
-            unlock_level: ente.unlockLevel,
-            notes: ente.notes ?? null,
-            custom_image: ente.customImage ?? null,
-            updated_at: new Date(ente.updatedAt).toISOString(),
-          });
+        // Delete remotely
+        for (const ente of deletedEntes) {
+          const { error } = await supabase
+            .from("entes")
+            .delete()
+            .eq("character_id", remoteCharId)
+            .eq("ente_id", ente.enteID);
+          if (error) {
+            console.warn(
+              "pushLocalChanges: ente delete error",
+              ente.enteID,
+              error
+            );
+          } else {
+            // Hard delete locally once the remote record is gone
+            await db.entes.delete(ente.id!);
+          }
         }
 
-        const enteRecords = Array.from(uniqueMap.values());
+        // Upsert remaining active entes
+        if (activeEntes.length > 0) {
+          const uniqueMap = new Map<string, any>();
 
-        const entesUpsert = await supabase
-          .from("entes")
-          .upsert(enteRecords, { onConflict: "character_id,ente_id" });
+          for (const ente of activeEntes) {
+            const key = `${remoteCharId}_${ente.enteID}`;
 
-        if (entesUpsert.error) {
-          console.warn(
-            "pushLocalChanges: entes upsert error",
-            entesUpsert.error
-          );
+            uniqueMap.set(key, {
+              character_id: remoteCharId,
+              ente_id: ente.enteID,
+              amount: ente.amount,
+              favorite: ente.favorite,
+              order: ente.order,
+              unlock_level: ente.unlockLevel,
+              notes: ente.notes ?? null,
+              custom_image: ente.customImage ?? null,
+              updated_at: new Date(ente.updatedAt).toISOString(),
+            });
+          }
+
+          const enteRecords = Array.from(uniqueMap.values());
+
+          const entesUpsert = await supabase
+            .from("entes")
+            .upsert(enteRecords, { onConflict: "character_id,ente_id" });
+
+          if (entesUpsert.error) {
+            console.warn(
+              "pushLocalChanges: entes upsert error",
+              entesUpsert.error
+            );
+          }
         }
       }
 
@@ -178,7 +203,7 @@ export async function pushLocalChanges() {
       }
 
       /* =========================
-           LOADOUTS (ID‑BASED DELETE + UPSERT)
+           LOADOUTS
       ========================= */
 
       const localLoadouts = await db.loadouts
@@ -186,7 +211,7 @@ export async function pushLocalChanges() {
         .equals(char.id!)
         .toArray();
 
-      // Delete soft-deleted loadouts from remote (by ID if available)
+      // 1. Delete soft‑deleted loadouts (unchanged)
       const deleted = localLoadouts.filter((l) => l.isDeleted);
       for (const l of deleted) {
         if (l.remoteId) {
@@ -205,11 +230,16 @@ export async function pushLocalChanges() {
         }
       }
 
-      // Upsert active loadouts using ID conflict
-      const active = localLoadouts.filter((l) => !l.isDeleted);
-      if (active.length > 0 && remoteCharId) {
-        const records = active.map((l) => {
-          const payload: any = {
+      if (remoteCharId) {
+        // 2. Separate active loadouts
+        const active = localLoadouts.filter((l) => !l.isDeleted);
+        const existingLoadouts = active.filter((l) => l.remoteId);
+        const newLoadouts = active.filter((l) => !l.remoteId);
+
+        // 3. Upsert existing loadouts (all have remoteId)
+        if (existingLoadouts.length > 0) {
+          const existingRecords = existingLoadouts.map((l) => ({
+            id: l.remoteId,
             character_id: remoteCharId,
             name: l.name,
             hp: l.data.hp,
@@ -220,34 +250,50 @@ export async function pushLocalChanges() {
             slots: l.data.slots,
             notes: l.data.notes ?? null,
             updated_at: new Date(l.updatedAt).toISOString(),
-          };
-          // Include remoteId if we have it
-          if (l.remoteId) {
-            payload.id = l.remoteId;
+          }));
+
+          const { error } = await supabase
+            .from("loadouts")
+            .upsert(existingRecords, { onConflict: "id" });
+
+          if (error) {
+            console.warn("pushLocalChanges: loadouts upsert error", error);
           }
-          return payload;
-        });
+        }
 
-        const { data: upsertedData, error } = await supabase
-          .from("loadouts")
-          .upsert(records, { onConflict: "id" })
-          .select();
+        // 4. Insert new loadouts (no remoteId, no id field)
+        if (newLoadouts.length > 0) {
+          const newRecords = newLoadouts.map((l) => ({
+            character_id: remoteCharId,
+            name: l.name,
+            hp: l.data.hp,
+            atk: l.data.atk,
+            weapon: l.data.weapon,
+            habilidades_pasivas: l.data.habilidadesPasivas?.selectedIds ?? [],
+            armor_class: l.data.armorClass,
+            slots: l.data.slots,
+            notes: l.data.notes ?? null,
+            updated_at: new Date(l.updatedAt).toISOString(),
+          }));
 
-        if (error) {
-          console.warn("pushLocalChanges: loadouts upsert error", error);
-        } else if (upsertedData) {
-          // Assign remote IDs to newly created loadouts
-          for (const remote of upsertedData) {
-            const local = active.find(
-              (l) =>
-                !l.remoteId &&
-                l.name === remote.name &&
-                l.characterId === char.id
-            );
-            if (local) {
-              await db.loadouts.update(local.id!, {
-                remoteId: remote.id,
-              });
+          const { data: inserted, error } = await supabase
+            .from("loadouts")
+            .insert(newRecords)
+            .select();
+
+          if (error) {
+            console.warn("pushLocalChanges: loadouts insert error", error);
+          } else if (inserted) {
+            // Assign the returned remote IDs back to local records
+            for (const remote of inserted) {
+              const local = newLoadouts.find(
+                (l) => l.name === remote.name && l.characterId === char.id
+              );
+              if (local) {
+                await db.loadouts.update(local.id!, {
+                  remoteId: remote.id,
+                });
+              }
             }
           }
         }
@@ -269,6 +315,7 @@ export async function pushLocalChanges() {
     }
   }
 }
+
 
 export async function deleteRemoteCharacter(localCharId: number) {
   const localChar = await db.characters.get(localCharId);
@@ -751,7 +798,6 @@ async function pullRemoteEntes() {
   if (!remoteChars) return;
 
   for (const remoteChar of remoteChars) {
-    // Find local character by remoteId
     const localChar = await db.characters
       .where("remoteId")
       .equals(remoteChar.id)
@@ -759,7 +805,6 @@ async function pullRemoteEntes() {
 
     if (!localChar) continue;
 
-    // Pull entes for this character
     const { data: remoteEntes } = await supabase
       .from("entes")
       .select("*")
@@ -767,6 +812,23 @@ async function pullRemoteEntes() {
 
     if (!remoteEntes) continue;
 
+    // ---- Remove local entes that no longer exist remotely ----
+    const localEntesAll = await db.entes
+      .where("characterId")
+      .equals(localChar.id!)
+      .toArray();
+    const nonDeletedLocal = localEntesAll.filter(e => !e.isDeleted);
+    const remoteEnteIds = new Set(remoteEntes.map(r => r.ente_id));
+
+    for (const le of nonDeletedLocal) {
+      if (!remoteEnteIds.has(le.enteID) && !le.isDirty) {
+        // This ente was deleted on another device
+        await db.entes.delete(le.id!);
+      }
+    }
+    // ---------------------------------------------------------
+
+    // Continue with normal pull (unchanged)
     for (const remote of remoteEntes) {
       const existing = await db.entes
         .where("[characterId+enteID]")

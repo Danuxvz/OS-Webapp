@@ -71,6 +71,7 @@ export interface CharacterEnte extends SyncMeta {
   order: number;
   notes?: string;
   customImage?: string;
+  isDeleted?: boolean;          // <-- new field
 }
 
 export interface EnteMetadata extends SyncMeta {
@@ -348,6 +349,19 @@ class OpenSourceDB extends Dexie {
             ...l,
             data
           });
+        }
+      }
+    });
+
+    // Version 9 – add isDeleted to entes (new)
+    this.version(9).stores({
+      // no schema changes, just data migration
+    }).upgrade(async (tx) => {
+      const entes = await tx.table("entes").toArray();
+      for (const ente of entes) {
+        if (ente.isDeleted === undefined) {
+          ente.isDeleted = false;
+          await tx.table("entes").put(ente);
         }
       }
     });

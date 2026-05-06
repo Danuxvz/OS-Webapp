@@ -13,27 +13,31 @@ function App({ discordId }: { discordId: string | null }) {
 	const [sidebarHidden, setSidebarHidden] = useState(false)
 	const [activeSection, setActiveSection] = useState<"loadout" | "entes" | "inventario">("entes")
 
-	useEffect(() => {
-		if (!discordId) return;
+useEffect(() => {
+  if (!discordId) return;
 
-		async function init() {
-			let chars = await characterManager.getCharactersByUser(discordId!);
+  async function init() {
+    let chars = await characterManager.getCharactersByUser(discordId!);
 
-			if (chars.length === 0) {
-				const newId = await characterManager.createCharacter(discordId!, "Default Character");
-				const newChar = await characterManager.getCharacter(newId);
-				chars = [newChar!];
-			}
+    if (chars.length === 0) {
+      const newId = await characterManager.createCharacter(discordId!, "Default Character");
+      const newChar = await characterManager.getCharacter(newId);
+      chars = [newChar!];
+    }
 
-			setCharacters(chars); // update state
-			setActiveCharacterId(chars[0].id!);
-			preloadMetadata();
+    chars.sort((a, b) => {
+      const aIsExternal = a.source === "external" ? 1 : 0;
+      const bIsExternal = b.source === "external" ? 1 : 0;
+      return bIsExternal - aIsExternal || a.charName.localeCompare(b.charName);
+    });
 
-		}
+    setCharacters(chars);
+    setActiveCharacterId(chars[0].id!);
+    preloadMetadata();
+  }
 
-		init();
-	}, [discordId]);
-
+  init();
+}, [discordId]);
 
 
 	return (

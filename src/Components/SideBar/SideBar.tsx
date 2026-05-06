@@ -49,11 +49,19 @@ function ControlPanel({
 		MANAGE CHARACTERS
 	========================= */
 	const handleAddCharacter = async () => {
-		const name = "New Character";
-		const newCharId = await characterManager.createCharacter(discordUser?.id ?? "", name);
-		const updatedChars = await characterManager.getCharactersByUser(discordUser?.id ?? "");
-		setCharacters(updatedChars);
-		setActiveCharacterId(newCharId);
+	const name = "New Character";
+	const newCharId = await characterManager.createCharacter(discordUser?.id ?? "", name);
+	const updatedChars = await characterManager.getCharactersByUser(discordUser?.id ?? "");
+
+	// ✅ Sort: external first, then web, then alphabetically
+	updatedChars.sort((a, b) => {
+		const aIsExternal = a.source === "external" ? 1 : 0;
+		const bIsExternal = b.source === "external" ? 1 : 0;
+		return bIsExternal - aIsExternal || a.charName.localeCompare(b.charName);
+	});
+
+	setCharacters(updatedChars);
+	setActiveCharacterId(newCharId);
 	};
 
 	useEffect(() => {
