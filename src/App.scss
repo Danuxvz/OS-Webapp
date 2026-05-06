@@ -249,3 +249,18 @@ textarea:focus-visible {
   z-index: 9;
   background: inherit;
 }
+
+
+/* Sidebar overlay – shown on mobile to capture clicks outside the sidebar */
+.sidebar-overlay {
+	display: none;               /* hidden by default, only shown when sidebar is open on mobile */
+}
+@media (max-width: 768px) {
+	.sidebar-overlay {
+		display: block;
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.4);
+		z-index: 999; 
+	}
+}

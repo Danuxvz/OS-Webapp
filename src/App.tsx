@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import './App.scss'
 import ControlPanel from './Components/SideBar/SideBar.tsx'
 import SectionNav from './Components/SectionNav.tsx'
@@ -13,32 +13,39 @@ function App({ discordId }: { discordId: string | null }) {
 	const [sidebarHidden, setSidebarHidden] = useState(false)
 	const [activeSection, setActiveSection] = useState<"loadout" | "entes" | "inventario">("entes")
 
-useEffect(() => {
-  if (!discordId) return;
+	const refreshCharacters = useCallback(async () => {
+		if (!discordId) return;
+		const chars = await characterManager.getCharactersByUser(discordId);
+		chars.sort((a, b) => {
+			const aIsExternal = a.source === "external" ? 1 : 0;
+			const bIsExternal = b.source === "external" ? 1 : 0;
+			return bIsExternal - aIsExternal || a.charName.localeCompare(b.charName);
+		});
+		setCharacters(chars);
+	}, [discordId]);
 
-  async function init() {
-    let chars = await characterManager.getCharactersByUser(discordId!);
+	useEffect(() => {
+		if (!discordId) return;
 
-    if (chars.length === 0) {
-      const newId = await characterManager.createCharacter(discordId!, "Default Character");
-      const newChar = await characterManager.getCharacter(newId);
-      chars = [newChar!];
-    }
+		async function init() {
+			await refreshCharacters();
+			preloadMetadata();
+		}
 
-    chars.sort((a, b) => {
-      const aIsExternal = a.source === "external" ? 1 : 0;
-      const bIsExternal = b.source === "external" ? 1 : 0;
-      return bIsExternal - aIsExternal || a.charName.localeCompare(b.charName);
-    });
+		init();
 
-    setCharacters(chars);
-    setActiveCharacterId(chars[0].id!);
-    preloadMetadata();
-  }
+		// Listen for all events that might change the character list
+		const handler = refreshCharacters;
+		characterManager.on("characterCreated", handler);
+		characterManager.on("characterDeleted", handler);
+		characterManager.on("characterUpdated", handler);
 
-  init();
-}, [discordId]);
-
+		return () => {
+			characterManager.off("characterCreated", handler);
+			characterManager.off("characterDeleted", handler);
+			characterManager.off("characterUpdated", handler);
+		};
+	}, [discordId, refreshCharacters]);
 
 	return (
 		<div className="container-fluid vh-100">
@@ -54,6 +61,14 @@ useEffect(() => {
 						setActiveCharacterId={setActiveCharacterId}
 					/>
 				</div>
+
+				{/* Sidebar overlay – mobile only, taps close sidebar */}
+				{!sidebarHidden && (
+					<div
+						className="sidebar-overlay"
+						onClick={() => setSidebarHidden(true)}
+					/>
+				)}
 
 				{/* Right panel */}
 				<div className="col d-flex flex-column p-0">

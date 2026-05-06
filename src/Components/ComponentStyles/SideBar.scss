@@ -372,9 +372,9 @@ body:not(.sidebar-hidden) .main {
 ============================ */
 @media (max-width: 768px) {
   .sidebar {
-    width: 38% !important;
-    max-width: 45% !important;
-    min-width: 30% !important;
+    width: 45% !important;
+    max-width: 55% !important;
+    min-width: 35% !important;
     height: 100vh;
     position: fixed;
     left: 0;
@@ -397,3 +397,5 @@ body:not(.sidebar-hidden) .main {
     padding: 4px !important;
   }
 }
+
+

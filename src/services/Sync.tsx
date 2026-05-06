@@ -441,7 +441,7 @@ export async function pullCharactersExport() {
 
     if (!localChar) {
       const id = await db.characters.add({
-        discordId,
+        discordId: exp.owner_id,    // ← FIXED: use the export's owner, not the logged-in user
         remoteId: undefined,
         externalId,
         source: "external",
