@@ -70,21 +70,21 @@
 }
 
 @media (max-width: 768px) {
-  .nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: flex-end;
-  }
+    .nav {
+        flex-wrap: nowrap;
+        gap: 4px;
+    }
 
-  .nav-burger {
-    margin-right: auto;
-    max-width: 20%;
-  }
+    .nav-burger {
+        flex: 0 0 auto;
+        max-width: 20%;
+    }
 
-  .tab-btn {
-    font-size: 14px;
-    padding: 8px 12px;
-    max-width: 25%;
-  }
+    .tab-btn {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 13px;
+        padding: 8px 6px;
+        max-width: 24%;
+    }
 }

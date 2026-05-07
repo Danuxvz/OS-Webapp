@@ -457,6 +457,13 @@ export async function pullCharactersExport() {
       });
 
       localChar = await db.characters.get(id);
+
+      if (localChar!.externalId && localChar!.source !== "external") {
+          await db.characters.update(localChar!.id!, {
+              source: "external",
+              isDirty: true,
+          });
+      }
     }
 
     // --- Parse inventory blob into simple map: id -> amount

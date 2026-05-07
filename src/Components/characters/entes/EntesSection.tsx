@@ -427,10 +427,15 @@ function EntesSection({ characterId }: EntesSectionProps) {
 								<EnteCard
 									ente={ente}
 									onUpdate={updateEnte}
-									onDelete={async (id) => {
-										await characterManager.removeEnte(characterId, id);
-										await loadEntes();
-									}}
+								onDelete={async (id) => {
+									await characterManager.updateEnte(characterId, id, {
+										isDeleted: true,
+										amount: 0,
+										updatedAt: Date.now(),
+										isDirty: true,
+									});
+									await loadEntes();
+								}}
 									computeUnlockLevel={computeUnlockLevel}
 								/>
 							</li>
