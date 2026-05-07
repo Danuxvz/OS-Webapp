@@ -24,8 +24,11 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const pendingLoadingTimerRef = useRef<number | null>(null);
   const suppressReloadRef = useRef(0);
   const isLoadingRef = useRef(false);
-  const needsReloadRef = useRef(false);
+  const needsReloadRef = useRef(false);   // used only on desktop for follow-up
   const mountedRef = useRef(true);
+
+  // Simple mobile detection (runs once per load)
+  const isMobile = () => window.innerWidth <= 768;
 
   /* =========================
      COMPUTE UNLOCK LEVEL
@@ -57,7 +60,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
   }
 
   /* =========================
-     LOAD ENTES (fixed stale‑load bug)
+     LOAD ENTES (desktop follow‑up, mobile ignore)
   ========================= */
   async function loadEntes() {
     if (!characterId) {
@@ -65,13 +68,21 @@ function EntesSection({ characterId }: EntesSectionProps) {
       return;
     }
 
-    // 🔥 Always bump the load ID – this invalidates any in‑progress load
+    const mobile = isMobile();
+
+    // Always bump the load ID – this invalidates any in‑progress load
     const thisLoadId = ++loadIdRef.current;
 
-    // If a load is already running, just mark that we need another one later
+    // If a load is already running:
     if (isLoadingRef.current) {
-      needsReloadRef.current = true;
-      return;
+      if (mobile) {
+        // Mobile: just ignore, no follow‑up
+        return;
+      } else {
+        // Desktop: mark that we need another load after this one finishes
+        needsReloadRef.current = true;
+        return;
+      }
     }
 
     isLoadingRef.current = true;
@@ -158,8 +169,8 @@ function EntesSection({ characterId }: EntesSectionProps) {
     } finally {
       isLoadingRef.current = false;
 
-      // If events occurred during load, schedule one more refresh
-      if (needsReloadRef.current && mountedRef.current) {
+      // Desktop follow‑up: if events occurred during load, schedule one more refresh
+      if (!mobile && needsReloadRef.current && mountedRef.current) {
         needsReloadRef.current = false;
         setTimeout(() => loadEntes(), 50);
       }
@@ -174,7 +185,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
   }
 
-  // Load when characterId changes
+  // Load when characterId changes, and listen to manager events
   useEffect(() => {
     mountedRef.current = true;
 
@@ -185,19 +196,15 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
     loadEntes();
 
-    // Only react to events that concern the current character
     const handler = (payload: any) => {
       if (suppressReloadRef.current > 0) return;
 
-      // Ignore events for other characters
+      // Ignore events that are not for this character
       if (payload && (payload.characterId !== characterId && payload.id !== characterId)) {
         return;
       }
 
-      needsReloadRef.current = true;
-      if (!isLoadingRef.current) {
-        loadEntes();
-      }
+      loadEntes();
     };
 
     characterManager.on("characterUpdated", handler);
