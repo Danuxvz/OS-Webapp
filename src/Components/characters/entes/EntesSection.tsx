@@ -24,7 +24,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const pendingLoadingTimerRef = useRef<number | null>(null);
   const suppressReloadRef = useRef(0);
   const isLoadingRef = useRef(false);
-  const needsReloadRef = useRef(false);          // demand another load after current finishes
+  const needsReloadRef = useRef(false);
   const mountedRef = useRef(true);
 
   /* =========================
@@ -57,13 +57,17 @@ function EntesSection({ characterId }: EntesSectionProps) {
   }
 
   /* =========================
-     LOAD ENTES (with anti‑loop)
+     LOAD ENTES (fixed stale‑load bug)
   ========================= */
   async function loadEntes() {
     if (!characterId) {
       setEntes([]);
       return;
     }
+
+    // 🔥 Always bump the load ID – this invalidates any in‑progress load
+    const thisLoadId = ++loadIdRef.current;
+
     // If a load is already running, just mark that we need another one later
     if (isLoadingRef.current) {
       needsReloadRef.current = true;
@@ -71,9 +75,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
 
     isLoadingRef.current = true;
-    needsReloadRef.current = false;               // will be set again if events happen during load
-
-    const thisLoadId = ++loadIdRef.current;
+    needsReloadRef.current = false;
 
     if (pendingLoadingTimerRef.current) {
       window.clearTimeout(pendingLoadingTimerRef.current);
@@ -159,7 +161,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
       // If events occurred during load, schedule one more refresh
       if (needsReloadRef.current && mountedRef.current) {
         needsReloadRef.current = false;
-        // short delay to allow any pending state to settle (optional)
         setTimeout(() => loadEntes(), 50);
       }
 
@@ -184,12 +185,16 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
     loadEntes();
 
-    // When any relevant event comes, mark that we need a reload
-    const handler = () => {
+    // Only react to events that concern the current character
+    const handler = (payload: any) => {
       if (suppressReloadRef.current > 0) return;
 
+      // Ignore events for other characters
+      if (payload && (payload.characterId !== characterId && payload.id !== characterId)) {
+        return;
+      }
+
       needsReloadRef.current = true;
-      // If no load is currently in progress, start one immediately
       if (!isLoadingRef.current) {
         loadEntes();
       }
@@ -210,7 +215,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
   /* =========================
      UPDATE ENTE (single update)
-     - optimistic local update, then persist
   ========================= */
   async function updateEnte(updated: Ente) {
     if (!characterId) return;
