@@ -23,8 +23,8 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const loadIdRef = useRef(0);
   const pendingLoadingTimerRef = useRef<number | null>(null);
   const suppressReloadRef = useRef(0);
-  const reloadTimeoutRef = useRef<number | null>(null);
-  const isLoadingRef = useRef(false);               // prevent overlapping loads
+  const isLoadingRef = useRef(false);
+  const needsReloadRef = useRef(false);          // demand another load after current finishes
   const mountedRef = useRef(true);
 
   /* =========================
@@ -57,15 +57,21 @@ function EntesSection({ characterId }: EntesSectionProps) {
   }
 
   /* =========================
-     LOAD ENTES
+     LOAD ENTES (with anti‑loop)
   ========================= */
   async function loadEntes() {
     if (!characterId) {
       setEntes([]);
       return;
     }
-    if (isLoadingRef.current) return;                // prevent overlapping loads
+    // If a load is already running, just mark that we need another one later
+    if (isLoadingRef.current) {
+      needsReloadRef.current = true;
+      return;
+    }
+
     isLoadingRef.current = true;
+    needsReloadRef.current = false;               // will be set again if events happen during load
 
     const thisLoadId = ++loadIdRef.current;
 
@@ -73,7 +79,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
       window.clearTimeout(pendingLoadingTimerRef.current);
       pendingLoadingTimerRef.current = null;
     }
-    // show loading indicator only if the load takes > 0.8s (avoids flickering)
     pendingLoadingTimerRef.current = window.setTimeout(() => {
       if (thisLoadId === loadIdRef.current && mountedRef.current) setLoading(true);
     }, 800);
@@ -150,6 +155,14 @@ function EntesSection({ characterId }: EntesSectionProps) {
       console.warn("loadEntes error", err);
     } finally {
       isLoadingRef.current = false;
+
+      // If events occurred during load, schedule one more refresh
+      if (needsReloadRef.current && mountedRef.current) {
+        needsReloadRef.current = false;
+        // short delay to allow any pending state to settle (optional)
+        setTimeout(() => loadEntes(), 50);
+      }
+
       if (pendingLoadingTimerRef.current) {
         window.clearTimeout(pendingLoadingTimerRef.current);
         pendingLoadingTimerRef.current = null;
@@ -171,23 +184,15 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
     loadEntes();
 
-    // subscribe to manager events with a debounce to avoid rapid reloads
-    const handler = (payload: any) => {
+    // When any relevant event comes, mark that we need a reload
+    const handler = () => {
       if (suppressReloadRef.current > 0) return;
 
-      if (reloadTimeoutRef.current) {
-        window.clearTimeout(reloadTimeoutRef.current);
+      needsReloadRef.current = true;
+      // If no load is currently in progress, start one immediately
+      if (!isLoadingRef.current) {
+        loadEntes();
       }
-      reloadTimeoutRef.current = window.setTimeout(() => {
-        if (!mountedRef.current) return;
-        if (!payload) return;
-        const relates =
-          payload.characterId === characterId ||
-          (payload.id && payload.id === characterId);      // adjusted to check character id
-        if (relates) {
-          loadEntes();
-        }
-      }, 400);   // wait 400ms after last event before reloading
     };
 
     characterManager.on("characterUpdated", handler);
@@ -199,9 +204,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
       characterManager.off("characterUpdated", handler);
       characterManager.off("enteUpdated", handler);
       characterManager.off("bonusUpdated", handler);
-      if (reloadTimeoutRef.current) {
-        window.clearTimeout(reloadTimeoutRef.current);
-      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterId]);
@@ -224,7 +226,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
         favorite: updated.favorite
       });
     } catch (err) {
-      loadEntes();   // reload to sync on failure
+      loadEntes();
     }
   }
 
@@ -434,7 +436,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
                       await loadEntes();
                     } catch (err) {
                       console.warn("Failed to delete ente", id, err);
-                      await loadEntes();   // reload anyway to show consistent state
+                      await loadEntes();
                     }
                   }}
                   computeUnlockLevel={computeUnlockLevel}
