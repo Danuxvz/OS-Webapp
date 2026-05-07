@@ -458,7 +458,7 @@ export async function pullCharactersExport() {
 
       localChar = await db.characters.get(id);
       }
-      
+
     if (localChar!.externalId && localChar!.source !== "external") {
         await db.characters.update(localChar!.id!, {
             source: "external",
@@ -1010,6 +1010,20 @@ async function pullRemoteCharacters() {
       });
     }
   }
+
+  // Remove local characters not present in remote (only if not dirty, to avoid deleting unsynced new characters)
+  const remoteIds = new Set(remoteChars.map(c => c.id));
+  const allLocal = await db.characters
+    .where("discordId")
+    .equals(getDiscordId()!)
+    .toArray();
+
+  for (const local of allLocal) {
+    if (local.remoteId && !remoteIds.has(local.remoteId) && !local.isDirty) {
+      await db.characters.delete(local.id!);
+    }
+  }
+
   await pullRemoteEntes();
   await pullRemoteLoadouts();
 }
