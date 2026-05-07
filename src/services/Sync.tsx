@@ -457,13 +457,13 @@ export async function pullCharactersExport() {
       });
 
       localChar = await db.characters.get(id);
-
-      if (localChar!.externalId && localChar!.source !== "external") {
-          await db.characters.update(localChar!.id!, {
-              source: "external",
-              isDirty: true,
-          });
       }
+      
+    if (localChar!.externalId && localChar!.source !== "external") {
+        await db.characters.update(localChar!.id!, {
+            source: "external",
+            isDirty: true,
+        });
     }
 
     // --- Parse inventory blob into simple map: id -> amount
@@ -974,6 +974,7 @@ async function pullRemoteCharacters() {
         remoteId: remote.id,
         discordId: getDiscordId()!,
         externalId: remote.external_id ?? null,
+        source: remote.external_id ? "external" : "web",
         charName: remote.char_name,
         baseStats: remote.base_stats,
         bonusLog: remote.bonus_log,
@@ -987,6 +988,7 @@ async function pullRemoteCharacters() {
       continue;
     }
 
+    // Update if newer
     if (remoteTime > local.updatedAt) {
       await db.characters.update(local.id!, {
         charName: remote.char_name,
@@ -998,6 +1000,13 @@ async function pullRemoteCharacters() {
         schemaVersion: remote.schema_version,
         updatedAt: remoteTime,
         isDirty: false,
+      });
+    }
+
+    if (remote.external_id && local.source !== "external") {
+      await db.characters.update(local.id!, {
+        source: "external",
+        isDirty: true,
       });
     }
   }

@@ -23,6 +23,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
 	const loadIdRef = useRef(0);
 	const pendingLoadingTimerRef = useRef<number | null>(null);
 	const suppressReloadRef = useRef(0);
+	const reloadTimeoutRef = useRef<number | null>(null); // NEW – debounce timer
 	const mountedRef = useRef(true);
 
 	/* =========================
@@ -174,14 +175,21 @@ function EntesSection({ characterId }: EntesSectionProps) {
 			// if reloads are suppressed (e.g. during reorder), ignore
 			if (suppressReloadRef.current > 0) return;
 
-			if (!payload) return;
-			const relates =
-				payload.characterId === characterId ||
-				payload.id && false;
-
-			if (relates) {
-				loadEntes();
+			// Debounce: avoid flood of reloads on rapid updates (mobile)
+			if (reloadTimeoutRef.current) {
+				window.clearTimeout(reloadTimeoutRef.current);
 			}
+			reloadTimeoutRef.current = window.setTimeout(() => {
+				if (!mountedRef.current) return;
+				if (!payload) return;
+				const relates =
+					payload.characterId === characterId ||
+					payload.id && false;
+
+				if (relates) {
+					loadEntes();
+				}
+			}, 250);
 		};
 
 		characterManager.on("characterUpdated", handler);
@@ -193,6 +201,9 @@ function EntesSection({ characterId }: EntesSectionProps) {
 			characterManager.off("characterUpdated", handler);
 			characterManager.off("enteUpdated", handler);
 			characterManager.off("bonusUpdated", handler);
+			if (reloadTimeoutRef.current) {
+				window.clearTimeout(reloadTimeoutRef.current);
+			}
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [characterId]);
@@ -427,15 +438,16 @@ function EntesSection({ characterId }: EntesSectionProps) {
 								<EnteCard
 									ente={ente}
 									onUpdate={updateEnte}
-								onDelete={async (id) => {
-									await characterManager.updateEnte(characterId, id, {
-										isDeleted: true,
-										amount: 0,
-										updatedAt: Date.now(),
-										isDirty: true,
-									});
-									await loadEntes();
-								}}
+									onDelete={async (id) => {
+										// Soft-delete the ente directly
+										await characterManager.updateEnte(characterId, id, {
+											isDeleted: true,
+											amount: 0,
+											updatedAt: Date.now(),
+											isDirty: true,
+										});
+										await loadEntes();
+									}}
 									computeUnlockLevel={computeUnlockLevel}
 								/>
 							</li>
