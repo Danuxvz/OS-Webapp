@@ -47,7 +47,8 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const SPECIAL_VARIANT_BASES: Record<string, string> = {
     E005: "E005A",
     E060: "E060A",
-    E052: "E052A"
+    E052: "E052A",
+    E123: "E123A"
   };
 
   function getSpecialBase(id: string): string | null {

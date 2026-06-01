@@ -1,9 +1,9 @@
 // CharacterDetails.tsx
 import { useState, useEffect, useMemo, useRef } from "react";
+import type { MouseEvent } from "react";
 import type { Character } from "../characters/database/db";
 import { characterManager } from "../characters/CharacterManager";
-import { deleteRemoteCharacter } from "../../services/Sync.tsx"
-
+import { deleteRemoteCharacter } from "../../services/Sync.tsx";
 
 interface Props {
   character: Character;
@@ -16,20 +16,31 @@ type StatKey = "hp" | "atk" | "slots";
 function CharacterDetails({ character, isActive, onSelect }: Props) {
   const [localChar, setLocalChar] = useState<Character>(character);
   const [openBreakdown, setOpenBreakdown] = useState<StatKey | null>(null);
+  const [nameDraft, setNameDraft] = useState(character.charName || "");
 
   const updateTimerRef = useRef<number | null>(null);
+  const nameDebounceRef = useRef<number | null>(null);
   const lastFetchIdRef = useRef(0);
+  const localCharRef = useRef<Character>(character);
+
+  useEffect(() => {
+    localCharRef.current = localChar;
+  }, [localChar]);
 
   /* =========================
-     INITIAL SYNC + EVENT SUBSCRIPTION 
+     INITIAL SYNC + EVENT SUBSCRIPTION
   ========================= */
   useEffect(() => {
     let mounted = true;
 
     async function init() {
       const fresh = await characterManager.getCharacter(character.id!);
-      if (mounted && fresh) setLocalChar(fresh);
+      if (mounted && fresh) {
+        setLocalChar(fresh);
+        setNameDraft(fresh.charName || "");
+      }
     }
+
     init();
 
     // Debounced handler for manager updates
@@ -54,23 +65,24 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
 
         try {
           const fresh = await characterManager.getCharacter(character.id!);
-          if (!mounted || fetchId !== lastFetchIdRef.current) return;
+          if (!mounted || fetchId !== lastFetchIdRef.current || !fresh) return;
+
+          const current = localCharRef.current;
 
           const isDifferent =
-            !fresh ||
-            !localChar ||
-            fresh.updatedAt !== localChar.updatedAt ||
-            JSON.stringify(fresh.bonusLog) !== JSON.stringify(localChar.bonusLog) ||
-            fresh.tempStatBonus.hp !== localChar.tempStatBonus.hp ||
-            fresh.tempStatBonus.atk !== localChar.tempStatBonus.atk ||
-            fresh.tempStatBonus.slots !== localChar.tempStatBonus.slots ||
-            fresh.charName !== localChar.charName ||
-            fresh.charImage !== localChar.charImage;
+            fresh.updatedAt !== current.updatedAt ||
+            JSON.stringify(fresh.bonusLog) !== JSON.stringify(current.bonusLog) ||
+            fresh.tempStatBonus.hp !== current.tempStatBonus.hp ||
+            fresh.tempStatBonus.atk !== current.tempStatBonus.atk ||
+            fresh.tempStatBonus.slots !== current.tempStatBonus.slots ||
+            fresh.charImage !== current.charImage ||
+            fresh.charName !== current.charName;
 
-          if (isDifferent && mounted && fresh) {
+          if (isDifferent) {
             setLocalChar(fresh);
           }
         } catch (error) {
+          // Intentionally ignore refresh errors here
         } finally {
           updateTimerRef.current = null;
         }
@@ -85,10 +97,14 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
       characterManager.off("characterUpdated", handler);
       characterManager.off("bonusUpdated", handler);
 
-      // Clean up pending timer
       if (updateTimerRef.current) {
         window.clearTimeout(updateTimerRef.current);
         updateTimerRef.current = null;
+      }
+
+      if (nameDebounceRef.current) {
+        window.clearTimeout(nameDebounceRef.current);
+        nameDebounceRef.current = null;
       }
     };
   }, [character.id]);
@@ -101,6 +117,23 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
       [field]: value,
     });
     if (fresh) setLocalChar(fresh);
+  }
+
+  function updateNameDebounced(value: string) {
+    setNameDraft(value);
+
+    if (nameDebounceRef.current) {
+      window.clearTimeout(nameDebounceRef.current);
+      nameDebounceRef.current = null;
+    }
+
+    nameDebounceRef.current = window.setTimeout(async () => {
+      const fresh = await characterManager.updateCharacter(character.id!, {
+        charName: value,
+      });
+
+      if (fresh) setLocalChar(fresh);
+    }, 500);
   }
 
   async function updateTempStat(stat: StatKey, value: number) {
@@ -149,24 +182,33 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
     };
   }, [localChar]);
 
+  /* =========================
+     Delete Character
+  ======================== */
+  async function handleDelete(e: MouseEvent) {
+    e.stopPropagation();
 
-	/* =========================
-		Delete Character
-		======================= */
+    const confirmed = confirm(
+      `Delete "${localChar.charName || "Unnamed Character"}"?`
+    );
 
-	async function handleDelete(e: React.MouseEvent) {
-		e.stopPropagation();
+    if (!confirmed) return;
 
-		const confirmed = confirm(
-			`Delete "${localChar.charName || "Unnamed Character"}"?`
-		);
+    if (nameDebounceRef.current) {
+      window.clearTimeout(nameDebounceRef.current);
+      nameDebounceRef.current = null;
+    }
 
-		if (!confirmed) return;
+    await deleteRemoteCharacter(localChar.id!);
+    await characterManager.deleteCharacter(character.id!);
+  }
 
-		await deleteRemoteCharacter(localChar.id!);
-
-		await characterManager.deleteCharacter(character.id!);
-	}
+  /* =========================
+     Sync draft name when character changes
+  ========================= */
+  useEffect(() => {
+    setNameDraft(localChar.charName || "");
+  }, [localChar.charName, localChar.id]);
 
   /* =========================
      RENDER
@@ -177,15 +219,14 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
         className={`character-header ${isActive ? "selected" : ""}`}
         onClick={onSelect}
       >
-				  <button
-						className="delete-btn"
-						onClick={handleDelete}
-					>
-						✕
-					</button>
+        <button className="delete-btn" onClick={handleDelete}>
+          ✕
+        </button>
+
         <span className="character-title">
           {localChar.charName || "Unnamed Character"}
         </span>
+
         <span className={`arrow ${isActive ? "open" : ""}`}>
           {isActive ? "▼" : "▲"}
         </span>
@@ -209,8 +250,17 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
         <input
           type="text"
           className="textInput"
-          value={localChar.charName}
-          onChange={(e) => updateField("charName", e.target.value)}
+          value={nameDraft}
+          onChange={(e) => updateNameDebounced(e.target.value)}
+          onBlur={() => {
+            if (nameDebounceRef.current) {
+              window.clearTimeout(nameDebounceRef.current);
+              nameDebounceRef.current = null;
+            }
+            if (nameDraft !== localCharRef.current.charName) {
+              updateField("charName", nameDraft);
+            }
+          }}
         />
 
         {(["hp", "atk", "slots"] as StatKey[]).map((stat) => (
@@ -257,14 +307,14 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(
-                    localChar.bonusLog?.[openBreakdown] || {}
-                  ).map(([enteID, value]) => (
-                    <tr key={enteID}>
-                      <td>{enteID}</td>
-                      <td>{value}</td>
-                    </tr>
-                  ))}
+                  {Object.entries(localChar.bonusLog?.[openBreakdown] || {}).map(
+                    ([enteID, value]) => (
+                      <tr key={enteID}>
+                        <td>{enteID}</td>
+                        <td>{value}</td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
             </div>
