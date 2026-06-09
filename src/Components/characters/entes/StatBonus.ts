@@ -72,14 +72,10 @@ export class StatBonusEngine {
     // ---------- 1. Normalise ----------
     let text = sbText.toLowerCase();
 
-    // Replace addition / subtraction words with explicit + or -
-    // Handles "Suma +3", "Suma 3", "Añade +4", "Resta -1", "Resta 1", "Disminuye 2", etc.
     text = text.replace(/\b(?:suma|añade)\s*\+?/gi, "+");
     text = text.replace(/\b(?:resta|disminuye)\s*\-?/gi, "-");
 
     // ---------- 2. Extract each stat ----------
-    // Keyword first (e.g., "HP +1", "HP: +6")
-    // Number first (e.g., "+5 HP", "+4 de HP", "+1 ATK") – only whitespace, colon, "de" allowed
     const patterns: Record<StatKey, RegExp> = {
       hp: /(?:hp|vida)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:hp|vida)/,
       atk: /(?:atk|ataque|atq|dmg)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:atk|ataque|atq|dmg)/,
