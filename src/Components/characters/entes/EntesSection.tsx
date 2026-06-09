@@ -1,5 +1,5 @@
 // EntesSection.tsx
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import type { Ente } from "../../../types";
 import EnteCard from "./EnteCard";
 import { characterManager } from "../CharacterManager";
@@ -18,21 +18,17 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const [filter, setFilter] = useState("");
   const [adding, setAdding] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"list" | "gallery">("list");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const loadIdRef = useRef(0);
   const pendingLoadingTimerRef = useRef<number | null>(null);
   const suppressReloadRef = useRef(0);
   const isLoadingRef = useRef(false);
-  const needsReloadRef = useRef(false);   // used only on desktop for follow-up
+  const needsReloadRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // Simple mobile detection (runs once per load)
-  const isMobile = () => window.innerWidth <= 768;
-
-  /* =========================
-     COMPUTE UNLOCK LEVEL
-  ========================= */
   function computeUnlockLevel(amount: number) {
     if (amount >= 5) return 4;
     if (amount === 4) return 3;
@@ -41,14 +37,11 @@ function EntesSection({ characterId }: EntesSectionProps) {
     return 0;
   }
 
-  /* =========================
-     SPECIAL VARIANTS
-  ========================= */
   const SPECIAL_VARIANT_BASES: Record<string, string> = {
     E005: "E005A",
     E060: "E060A",
     E052: "E052A",
-    E123: "E123A"
+    E123: "E123A",
   };
 
   function getSpecialBase(id: string): string | null {
@@ -60,30 +53,18 @@ function EntesSection({ characterId }: EntesSectionProps) {
     return null;
   }
 
-  /* =========================
-     LOAD ENTES (desktop follow‑up, mobile ignore)
-  ========================= */
   async function loadEntes() {
     if (!characterId) {
       setEntes([]);
       return;
     }
 
-    const mobile = isMobile();
-
-    // Always bump the load ID – this invalidates any in‑progress load
     const thisLoadId = ++loadIdRef.current;
 
-    // If a load is already running:
     if (isLoadingRef.current) {
-      if (mobile) {
-        // Mobile: just ignore, no follow‑up
-        return;
-      } else {
-        // Desktop: mark that we need another load after this one finishes
-        needsReloadRef.current = true;
-        return;
-      }
+      if (window.innerWidth <= 768) return;
+      needsReloadRef.current = true;
+      return;
     }
 
     isLoadingRef.current = true;
@@ -115,7 +96,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
         stored.map(async (e: any) => {
           const enteId = e.enteID ?? e.id;
           if (!enteId) return null;
-          console.log("Stored ente ID:", enteId);
           const meta = await getEnteMetadata(enteId.toString());
           if (!meta) return null;
 
@@ -124,10 +104,9 @@ function EntesSection({ characterId }: EntesSectionProps) {
               ...meta,
               metadataVersion: 1,
               updatedAt: Date.now(),
-              isDirty: false
+              isDirty: false,
             });
-          } catch (err) {
-          }
+          } catch (err) {}
 
           return {
             ...meta,
@@ -138,7 +117,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
             customImage: e.customImage ?? "",
             order: typeof e.order === "number"
               ? e.order
-              : Number.MAX_SAFE_INTEGER
+              : Number.MAX_SAFE_INTEGER,
           } as Ente;
         })
       );
@@ -147,7 +126,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
       const validEntes = (enriched.filter(Boolean) as Ente[]);
 
-      // share unlock levels across variants
       const specialGroups: Record<string, Ente[]> = {};
       validEntes.forEach((ente) => {
         const base = getSpecialBase(ente.id);
@@ -156,10 +134,12 @@ function EntesSection({ characterId }: EntesSectionProps) {
         specialGroups[base].push(ente);
       });
 
-      Object.values(specialGroups).forEach(group => {
-        const maxAmount = Math.max(...group.map(e => e.amount));
+      Object.values(specialGroups).forEach((group) => {
+        const maxAmount = Math.max(...group.map((e) => e.amount));
         const sharedUnlock = computeUnlockLevel(maxAmount);
-        group.forEach(e => { e.unlockLevel = sharedUnlock; });
+        group.forEach((e) => {
+          e.unlockLevel = sharedUnlock;
+        });
       });
 
       if (thisLoadId === loadIdRef.current && mountedRef.current) {
@@ -170,8 +150,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
     } finally {
       isLoadingRef.current = false;
 
-      // Desktop follow‑up: if events occurred during load, schedule one more refresh
-      if (!mobile && needsReloadRef.current && mountedRef.current) {
+      if (window.innerWidth > 768 && needsReloadRef.current && mountedRef.current) {
         needsReloadRef.current = false;
         setTimeout(() => loadEntes(), 50);
       }
@@ -186,7 +165,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
   }
 
-  // Load when characterId changes, and listen to manager events
   useEffect(() => {
     mountedRef.current = true;
 
@@ -199,12 +177,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
     const handler = (payload: any) => {
       if (suppressReloadRef.current > 0) return;
-
-      // Ignore events that are not for this character
-      if (payload && (payload.characterId !== characterId && payload.id !== characterId)) {
-        return;
-      }
-
+      if (payload && (payload.characterId !== characterId && payload.id !== characterId)) return;
       loadEntes();
     };
 
@@ -218,12 +191,8 @@ function EntesSection({ characterId }: EntesSectionProps) {
       characterManager.off("enteUpdated", handler);
       characterManager.off("bonusUpdated", handler);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterId]);
 
-  /* =========================
-     UPDATE ENTE (single update)
-  ========================= */
   async function updateEnte(updated: Ente) {
     if (!characterId) return;
 
@@ -235,16 +204,13 @@ function EntesSection({ characterId }: EntesSectionProps) {
         unlockLevel: updated.unlockLevel,
         notes: updated.notes,
         customImage: updated.customImage,
-        favorite: updated.favorite
+        favorite: updated.favorite,
       });
     } catch (err) {
       loadEntes();
     }
   }
 
-  /* =========================
-     ADD ENTE FORM
-  ========================= */
   function AddEnteForm({
     onAdd,
     onCancel,
@@ -256,20 +222,22 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
     return (
       <div className="add-ente-modal">
-        <input className="enteFilter"
+        <input
+          className="enteFilter"
           placeholder="Enter Ente ID..."
           value={id}
           onChange={(e) => setId(e.target.value)}
         />
-        <button className="modal-btn" onClick={() => onAdd(id)}>✔</button>
-        <button className="modal-btn" onClick={onCancel}>✖</button>
+        <button className="modal-btn" onClick={() => onAdd(id)}>
+          ✔
+        </button>
+        <button className="modal-btn" onClick={onCancel}>
+          ✖
+        </button>
       </div>
     );
   }
 
-  /* =========================
-     FILTER & SORT
-  ========================= */
   const filteredAndSorted = useMemo(() => {
     let list = [...entes];
 
@@ -303,7 +271,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
         return a.id.localeCompare(b.id);
       }
 
-      // ---- CUSTOM ORDER (DEFAULT) ----
       const orderA = typeof a.order === "number" ? a.order : Number.MAX_SAFE_INTEGER;
       const orderB = typeof b.order === "number" ? b.order : Number.MAX_SAFE_INTEGER;
 
@@ -316,16 +283,13 @@ function EntesSection({ characterId }: EntesSectionProps) {
     return list;
   }, [entes, sortBy, filter]);
 
-  /* =========================
-     REORDER (drag/drop)
-  ========================= */
   async function reorderEntes(dragId: string, dropId: string) {
     if (!characterId) return;
 
     const updated = [...entes];
 
-    const dragIndex = updated.findIndex(e => e.id === dragId);
-    const dropIndex = updated.findIndex(e => e.id === dropId);
+    const dragIndex = updated.findIndex((e) => e.id === dragId);
+    const dropIndex = updated.findIndex((e) => e.id === dropId);
     if (dragIndex === -1 || dropIndex === -1) return;
 
     const [removed] = updated.splice(dragIndex, 1);
@@ -333,12 +297,8 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
     const reordered = updated.map((e, i) => ({
       ...e,
-      order: i
+      order: i,
     }));
-    console.log("drag", dragIndex)
-    console.log("drop", dropIndex)
-    console.log("pre-reorder", entes)
-    console.log("reordered entes", reordered)
 
     setEntes(reordered);
 
@@ -347,7 +307,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
     try {
       await characterManager.updateEntesOrder(
         characterId,
-        reordered.map(e => ({ id: e.id, order: e.order }))
+        reordered.map((e) => ({ id: e.id, order: e.order }))
       );
     } catch {
       await loadEntes();
@@ -356,9 +316,23 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
   }
 
-  /* =========================
-     RENDER
-  ========================= */
+  function toggleExpand(id: string) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
+  function StarRating({ amount }: { amount: number }) {
+    const stars = Math.min(amount, 5);
+    return (
+      <div className="star-rating">
+        {Array.from({ length: 5 }, (_, i) => (
+          <span key={i} className={`star ${i < stars ? "filled" : "empty"}`}>
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  }
+
   if (!characterId) {
     return (
       <div className="entes-section">
@@ -374,9 +348,35 @@ function EntesSection({ characterId }: EntesSectionProps) {
         <h2>Entes</h2>
 
         <div className="entes-controls">
+          {/* View toggle buttons */}
+          <button
+            className={`view-toggle ${viewMode === "list" ? "active" : ""}`}
+            onClick={() => setViewMode("list")}
+            aria-label="List view"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="2" y="4" width="16" height="2" rx="1" fill="currentColor" />
+              <rect x="2" y="9" width="16" height="2" rx="1" fill="currentColor" />
+              <rect x="2" y="14" width="16" height="2" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            className={`view-toggle ${viewMode === "gallery" ? "active" : ""}`}
+            onClick={() => setViewMode("gallery")}
+            aria-label="Gallery view"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="2" y="2" width="7" height="7" rx="1" fill="currentColor" />
+              <rect x="11" y="2" width="7" height="7" rx="1" fill="currentColor" />
+              <rect x="2" y="11" width="7" height="7" rx="1" fill="currentColor" />
+              <rect x="11" y="11" width="7" height="7" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+
           <label>
             Sort:
-            <select className="enteSort"
+            <select
+              className="enteSort"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
             >
@@ -387,7 +387,8 @@ function EntesSection({ characterId }: EntesSectionProps) {
             </select>
           </label>
 
-          <input className="enteFilter"
+          <input
+            className="enteFilter"
             type="text"
             placeholder="Filter (ID / Name / Clase / Elemento)..."
             value={filter}
@@ -396,73 +397,142 @@ function EntesSection({ characterId }: EntesSectionProps) {
         </div>
       </div>
       <div className="ente-scroll">
-        <ul className="ente-list">
-          <li className="ente-add-static" onClick={() => setAdding(true)}>
-            + Add Ente
-          </li>
-          {adding && (
-            <AddEnteForm
-              onAdd={async (id) => {
-                if (!id) return;
-                await characterManager.addEnte(characterId, id, 1);
-                await loadEntes();
-                setAdding(false);
-              }}
-              onCancel={() => setAdding(false)}
-            />
-          )}
-
-          {loading ? (
-            <li className="ente-loading">Loading entes…</li>
-          ) : (
-            filteredAndSorted.map((ente) => (
-              <li
-                key={ente.id}
-                draggable={sortBy === "order"}
-                onDragStart={(e) => {
-                  if (sortBy !== "order") return;
-                  setDraggedId(ente.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  if (sortBy !== "order") return;
-                  e.preventDefault();
-                }}
-                onDrop={() => {
-                  if (sortBy !== "order" || !draggedId) return;
-                  reorderEntes(draggedId, ente.id);
-                  setDraggedId(null);
-                }}
-              >
-                <EnteCard
-                  ente={ente}
-                  onUpdate={updateEnte}
-                  onDelete={async (id) => {
-                    try {
-                      await characterManager.updateEnte(characterId, id, {
-                        isDeleted: true,
-                        amount: 0,
-                        updatedAt: Date.now(),
-                        isDirty: true,
-                      });
-                      await loadEntes();
-                    } catch (err) {
-                      console.warn("Failed to delete ente", id, err);
-                      await loadEntes();
-                    }
+        {viewMode === "gallery" ? (
+          <div className="gallery-grid">
+            {filteredAndSorted.map((ente) => (
+              <Fragment key={ente.id}>
+                <div
+                  className={`gallery-card ${expandedId === ente.id ? "expanded" : ""}`}
+                  draggable={sortBy === "order"}
+                  onDragStart={(e) => {
+                    if (sortBy !== "order") return;
+                    setDraggedId(ente.id);
+                    e.dataTransfer.effectAllowed = "move";
                   }}
-                  computeUnlockLevel={computeUnlockLevel}
-                />
-              </li>
-            ))
-          )}
+                  onDragOver={(e) => {
+                    if (sortBy !== "order") return;
+                    e.preventDefault();
+                  }}
+                  onDrop={() => {
+                    if (sortBy !== "order" || !draggedId) return;
+                    reorderEntes(draggedId, ente.id);
+                    setDraggedId(null);
+                  }}
+                  onClick={() => toggleExpand(ente.id)}
+                >
+                  <div className="gallery-thumb">
+                    {ente.image ? (
+                      <img src={ente.image} alt={ente.id} />
+                    ) : (
+                      <div className="no-image">?</div>
+                    )}
+                  </div>
+                  <StarRating amount={ente.amount} />
+                </div>
 
-          {filteredAndSorted.length === 0 && entes.length > 0 && !loading && (
-            <li className="no-entes">
-              Ningun ente coincide con el filtro "{filter}".
+                {expandedId === ente.id && (
+                  <div className="gallery-detail">
+                    <EnteCard
+                      ente={ente}
+                      onUpdate={updateEnte}
+                      onDelete={async (id) => {
+                        try {
+                          await characterManager.updateEnte(characterId, id, {
+                            isDeleted: true,
+                            amount: 0,
+                            updatedAt: Date.now(),
+                            isDirty: true,
+                          });
+                          await loadEntes();
+                        } catch (err) {
+                          console.warn("Failed to delete ente", id, err);
+                          await loadEntes();
+                        }
+                      }}
+                      computeUnlockLevel={computeUnlockLevel}
+                      hideThumbnail
+                    />
+                  </div>
+                )}
+              </Fragment>
+            ))}
+
+            {filteredAndSorted.length === 0 && entes.length > 0 && !loading && (
+              <div className="no-entes" style={{ width: "100%" }}>
+                Ningun ente coincide con el filtro "{filter}".
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Original list mode */
+          <ul className="ente-list">
+            <li className="ente-add-static" onClick={() => setAdding(true)}>
+              + Add Ente
             </li>
-          )}
-        </ul>
+            {adding && (
+              <AddEnteForm
+                onAdd={async (id) => {
+                  if (!id) return;
+                  await characterManager.addEnte(characterId, id, 1);
+                  await loadEntes();
+                  setAdding(false);
+                }}
+                onCancel={() => setAdding(false)}
+              />
+            )}
+
+            {loading ? (
+              <li className="ente-loading">Loading entes…</li>
+            ) : (
+              filteredAndSorted.map((ente) => (
+                <li
+                  key={ente.id}
+                  draggable={sortBy === "order"}
+                  onDragStart={(e) => {
+                    if (sortBy !== "order") return;
+                    setDraggedId(ente.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => {
+                    if (sortBy !== "order") return;
+                    e.preventDefault();
+                  }}
+                  onDrop={() => {
+                    if (sortBy !== "order" || !draggedId) return;
+                    reorderEntes(draggedId, ente.id);
+                    setDraggedId(null);
+                  }}
+                >
+                  <EnteCard
+                    ente={ente}
+                    onUpdate={updateEnte}
+                    onDelete={async (id) => {
+                      try {
+                        await characterManager.updateEnte(characterId, id, {
+                          isDeleted: true,
+                          amount: 0,
+                          updatedAt: Date.now(),
+                          isDirty: true,
+                        });
+                        await loadEntes();
+                      } catch (err) {
+                        console.warn("Failed to delete ente", id, err);
+                        await loadEntes();
+                      }
+                    }}
+                    computeUnlockLevel={computeUnlockLevel}
+                  />
+                </li>
+              ))
+            )}
+
+            {filteredAndSorted.length === 0 && entes.length > 0 && !loading && (
+              <li className="no-entes">
+                Ningun ente coincide con el filtro "{filter}".
+              </li>
+            )}
+          </ul>
+        )}
       </div>
     </div>
   );

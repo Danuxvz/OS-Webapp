@@ -446,7 +446,6 @@
     align-items: flex-start;
   }
 
-
   .ente-left {
     display: flex;
     flex-direction: column;
@@ -535,4 +534,140 @@
   .grid-slot .copy-slot-btn {
     opacity: 1;
   }
+}
+
+/* ============================
+   VIEW TOGGLE BUTTONS
+============================ */
+.view-toggle {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+
+  &.active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  &:hover {
+    color: #ccc;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
+/* ============================
+   GALLERY GRID
+============================ */
+.gallery-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-content: flex-start;
+}
+
+/* Mini gallery card */
+.gallery-card {
+  width: 120px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  &.expanded {
+    border-color: #555;
+  }
+}
+
+.gallery-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .no-image {
+    font-size: 24px;
+    color: #444;
+  }
+}
+
+/* Star rating */
+.star-rating {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.star {
+  font-size: 14px;
+  color: #555;
+
+  &.filled {
+    color: gold;
+  }
+
+  &.empty {
+    color: #333;
+  }
+}
+
+/* Expanded detail row */
+.gallery-detail {
+  width: 100%;
+  flex-basis: 100%;
+  background: #161616;
+  border: 1px solid #2b2b2b;
+  border-radius: 8px;
+  padding: 8px;
+  margin: 2px 0;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Adjust the reused EnteCard when inside gallery-detail */
+.gallery-detail .ente-item {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+/* Keep drag visual */
+.gallery-card[draggable="true"]:active {
+  opacity: 0.7;
 }

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import EnteSkills from "./EnteSkills";
 import type { Ente } from "../../../types";
 
-// Custom hook to detect mobile screen width
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false);
 
@@ -24,9 +23,10 @@ interface Props {
   onUpdate: (ente: Ente) => void;
   onDelete: (id: string) => void;
   computeUnlockLevel: (amount: number) => number;
+  hideThumbnail?: boolean;
 }
 
-function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel }: Props) {
+function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail }: Props) {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const [amount, setAmount] = useState(ente.amount || 0);
   const [unlockLevel, setUnlockLevel] = useState(
@@ -65,7 +65,6 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel }: Props) {
     setShowExtras(false);
   };
 
-  // Shared parts (actions and thumbnail) to avoid duplication
   const actions = (
     <>
       <button
@@ -91,7 +90,8 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel }: Props) {
     </>
   );
 
-  const thumbnail = (
+  // thumbnail only shown if hideThumbnail is false
+  const thumbnail = !hideThumbnail ? (
     <div className="ente-thumb-wrap" onClick={handleCustomImage}>
       {ente.image ? (
         <img className="ente-thumb" src={ente.image} alt={ente.id} />
@@ -99,27 +99,23 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel }: Props) {
         <div className="ente-thumbnail-placeholder">no image</div>
       )}
     </div>
-  );
+  ) : null;
 
-  // Desktop layout (actions inside left column, after thumbnail)
   const desktopLayout = (
     <div className="ente-top-row">
-		<div className="ente-actions">{actions}</div>
-      <div className="ente-left">
-        {thumbnail}
-      </div>
+      <div className="ente-actions">{actions}</div>
+      {thumbnail && <div className="ente-left">{thumbnail}</div>}
       <div className="ente-right">
         <EnteSkills ente={{ ...ente, unlockLevel }} />
       </div>
     </div>
   );
 
-  // Mobile layout (actions grouped above thumbnail with .mobile-left)
   const mobileLayout = (
     <div className="ente-top-row">
       <div className="mobile-left">
         <div className="ente-actions">{actions}</div>
-        <div className="ente-left">{thumbnail}</div>
+        {thumbnail && <div className="ente-left">{thumbnail}</div>}
       </div>
       <div className="ente-right">
         <EnteSkills ente={{ ...ente, unlockLevel }} />
@@ -132,7 +128,6 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel }: Props) {
       className="ente-item"
       onMouseDown={(e) => {
         const target = e.target as HTMLElement;
-        // Don't trigger drag when selecting text
         if (
           target.tagName === "TEXTAREA" ||
           target.tagName === "INPUT" ||
@@ -145,7 +140,6 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel }: Props) {
     >
       {isMobile ? mobileLayout : desktopLayout}
 
-      {/* Bottom row – same for both */}
       <div className="ente-bottom-row">
         {!hasExtras && (
           <div className="add-notes" onClick={() => setShowExtras(true)}>
