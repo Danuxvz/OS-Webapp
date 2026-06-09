@@ -63,27 +63,43 @@ export class StatBonusEngine {
   }
 
   /* -----------------------------
-     SB Parsing
+     SB Parsing  (IMPROVED)
   ------------------------------ */
 
   parseSB(sbText?: string): StatBlock {
     if (!sbText) return { hp: 0, atk: 0, slots: 0 };
 
-    const text = sbText.toLowerCase();
+    // ---------- 1. Normalise ----------
+    let text = sbText.toLowerCase();
 
-    const extract = (regex: RegExp) => {
-      const match = text.match(regex);
-      if (!match) return 0;
+    // Replace addition / subtraction words with explicit + or -
+    // Handles "Suma +3", "Suma 3", "Añade +4", "Resta -1", "Resta 1", "Disminuye 2", etc.
+    text = text.replace(/\b(?:suma|añade)\s*\+?/gi, "+");
+    text = text.replace(/\b(?:resta|disminuye)\s*\-?/gi, "-");
 
+    // ---------- 2. Extract each stat ----------
+    // Keyword first (e.g., "HP +1", "HP: +6")
+    // Number first (e.g., "+5 HP", "+4 de HP", "+1 ATK") – only whitespace, colon, "de" allowed
+    const patterns: Record<StatKey, RegExp> = {
+      hp: /(?:hp|vida)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:hp|vida)/,
+      atk: /(?:atk|ataque|atq|dmg)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:atk|ataque|atq|dmg)/,
+      slots: /(?:slot|slots|ranura)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:slot|slots|ranura)/,
+    };
+
+    const result: StatBlock = { hp: 0, atk: 0, slots: 0 };
+
+    (["hp", "atk", "slots"] as StatKey[]).forEach((stat) => {
+      const match = text.match(patterns[stat]);
+      if (!match) return;
+
+      // Group 1 = keyword‑first capture, Group 2 = number‑first capture
       const value = match[1] ?? match[2];
-      return value ? parseInt(value) : 0;
-    };
+      if (value) {
+        result[stat] = parseInt(value, 10);
+      }
+    });
 
-    return {
-      hp: extract(/(?:hp|vida)[^\d+-]*([+-]?\d+)|([+-]?\d+)[^\d]*(?:hp|vida)/),
-      atk: extract(/(?:atk|ataque|atq|dmg)[^\d+-]*([+-]?\d+)|([+-]?\d+)[^\d]*(?:atk|ataque|atq|dmg)/),
-      slots: extract(/(?:slot|slots|ranura)[^\d+-]*([+-]?\d+)|([+-]?\d+)[^\d]*(?:slot|slots|ranura)/),
-    };
+    return result;
   }
 
   /* -----------------------------
