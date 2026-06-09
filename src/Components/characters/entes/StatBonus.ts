@@ -66,70 +66,25 @@ export class StatBonusEngine {
      SB Parsing
   ------------------------------ */
 
-parseSB(sbText?: string): StatBlock {
-  if (!sbText) {
-    return { hp: 0, atk: 0, slots: 0 };
+  parseSB(sbText?: string): StatBlock {
+    if (!sbText) return { hp: 0, atk: 0, slots: 0 };
+
+    const text = sbText.toLowerCase();
+
+    const extract = (regex: RegExp) => {
+      const match = text.match(regex);
+      if (!match) return 0;
+
+      const value = match[1] ?? match[2];
+      return value ? parseInt(value) : 0;
+    };
+
+    return {
+      hp: extract(/(?:hp|vida)[^\d+-]*([+-]?\d+)|([+-]?\d+)[^\d]*(?:hp|vida)/),
+      atk: extract(/(?:atk|ataque|atq|dmg)[^\d+-]*([+-]?\d+)|([+-]?\d+)[^\d]*(?:atk|ataque|atq|dmg)/),
+      slots: extract(/(?:slot|slots|ranura)[^\d+-]*([+-]?\d+)|([+-]?\d+)[^\d]*(?:slot|slots|ranura)/),
+    };
   }
-
-  let text = sbText.toLowerCase();
-
-  // normalize aliases
-  text = text
-    .replace(/ataque/g, "atk")
-    .replace(/\batq\b/g, "atk")
-    .replace(/\bdmg\b/g, "atk")
-    .replace(/\bvida\b/g, "hp")
-    .replace(/\bslo\b/g, "slot")
-    .replace(/\branuras?\b/g, "slot")
-    .replace(/\bslots?\b/g, "slot");
-
-  text = text.replace(/(\d+)\s*\+\s*(atk|hp|slot)/g, "+$1 $2");
-
-  const result: StatBlock = {
-    hp: 0,
-    atk: 0,
-    slots: 0,
-  };
-
-  const patterns = [
-    /(atk|hp|slot)\s*:?\s*([+-]\d+)/g,
-    /([+-]\d+)\s*(atk|hp|slot)/g,
-  ];
-
-  for (const pattern of patterns) {
-    let match;
-
-    while ((match = pattern.exec(text)) !== null) {
-      const stat =
-        pattern === patterns[0]
-          ? match[1]
-          : match[2];
-
-      const value = parseInt(
-        pattern === patterns[0]
-          ? match[2]
-          : match[1],
-        10
-      );
-
-      switch (stat) {
-        case "atk":
-          result.atk += value;
-          break;
-
-        case "hp":
-          result.hp += value;
-          break;
-
-        case "slot":
-          result.slots += value;
-          break;
-      }
-    }
-  }
-
-  return result;
-}
 
   /* -----------------------------
      Apply / Remove
