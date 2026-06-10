@@ -441,7 +441,7 @@ export async function pullCharactersExport() {
 
     if (!localChar) {
       const id = await db.characters.add({
-        discordId: exp.owner_id,    // ← FIXED: use the export's owner, not the logged-in user
+        discordId: exp.owner_id,
         remoteId: undefined,
         externalId,
         source: "external",
@@ -457,16 +457,15 @@ export async function pullCharactersExport() {
       });
 
       localChar = await db.characters.get(id);
-      }
-
-    if (localChar!.externalId && localChar!.source !== "external") {
-        await db.characters.update(localChar!.id!, {
-            source: "external",
-            isDirty: true,
-        });
     }
 
-    // --- Parse inventory blob into simple map: id -> amount
+    if (localChar!.externalId && localChar!.source !== "external") {
+      await db.characters.update(localChar!.id!, {
+        source: "external",
+        isDirty: true,
+      });
+    }
+
     const parsedInventory = parseInventoryBlob(exp.inventory);
 
     const localEntes = await db.entes
@@ -501,18 +500,15 @@ export async function pullCharactersExport() {
         .toLowerCase()
         .replace(/[\s:_\-]+/g, "");
 
-    // --- Distribute parsed items into inventory OR entes ---
     for (const [rawId, amount] of Object.entries(parsedInventory)) {
       const normalized = normalize(rawId);
 
-      // Check if it matches a card id
       const cardMatch = CARD_IDS.find((c) => normalize(c) === normalized);
       if (cardMatch) {
         inventory!.cards[cardMatch] = amount;
         continue;
       }
 
-      // Check if it matches a consumable id
       const consumableMatch = CONSUMABLE_IDS.find(
         (c) => normalize(c) === normalized
       );
@@ -521,7 +517,6 @@ export async function pullCharactersExport() {
         continue;
       }
 
-      // Otherwise treat as an ente id
       const existing = existingMap.get(rawId);
       if (existing) {
         await db.entes.update(existing.id!, {
@@ -552,7 +547,6 @@ export async function pullCharactersExport() {
       isDirty: true,
     });
 
-    // Zero out missing entes (only those that were localEntes at start)
     for (const ente of localEntes) {
       if (!parsedInventory[ente.enteID]) {
         await db.entes.update(ente.id!, {
@@ -587,7 +581,6 @@ export async function pullCharactersExport() {
 }
 
 async function fetchOldUserRow(discordId: string) {
-  // Try plural then singular table names so migration is resilient across projects
   const candidates = ["user_data"];
 
   for (const tableName of candidates) {
@@ -599,8 +592,6 @@ async function fetchOldUserRow(discordId: string) {
         .single();
 
       if (error) {
-        // If table doesn't exist, PostgREST returns a PostgREST error; skip to next
-        // log for debugging but don't throw
         console.warn(
           `fetchOldUserRow: no data from ${tableName}:`,
           error.message ?? error
@@ -608,19 +599,14 @@ async function fetchOldUserRow(discordId: string) {
         continue;
       }
 
-      // If no row found, data will be null; return null to caller
       if (!data) return null;
-
-      // success
       return data;
     } catch (e) {
-      // network/other unexpected error — warn and continue
       console.warn(`fetchOldUserRow: fetch failed for ${tableName}:`, e);
       continue;
     }
   }
 
-  // nothing found in either table
   return null;
 }
 
@@ -629,9 +615,8 @@ async function migrateOldUserDataIfNeeded() {
   if (!discordId) return;
 
   const user = await db.users.get(discordId);
-  if (user?.migratedFromBlob) return; // already migrated
+  if (user?.migratedFromBlob) return;
 
-  // try to fetch the old row from either possible table
   const oldRow = await fetchOldUserRow(discordId);
   if (!oldRow) {
     console.info(
@@ -640,10 +625,6 @@ async function migrateOldUserDataIfNeeded() {
     return;
   }
 
-  // oldRow.data may be:
-  // - an object (json/ jsonb column)
-  // - a string with raw JSON
-  // - a CSV-escaped JSON string (quoted, inner quotes doubled) like in your export
   let raw = oldRow.data;
   if (raw == null) {
     console.info(
@@ -654,25 +635,19 @@ async function migrateOldUserDataIfNeeded() {
 
   let parsed: any = null;
 
-  // If it's already an object, use it
   if (typeof raw === "object") {
     parsed = raw;
   } else if (typeof raw === "string") {
-    // Clean up common CSV quoting artifacts and whitespace
     let s = raw.trim();
 
-    // If the string is wrapped in quotes (e.g. starts with " and ends with "), remove them
     if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
       s = s.slice(1, -1);
     }
 
-    // CSV exports often double double-quotes to escape them — replace "" with "
-    // Only do this replacement if it appears to be CSV-escaped JSON (heuristic)
     if (s.includes('""')) {
       s = s.replace(/""/g, '"');
     }
 
-    // Now attempt to parse
     try {
       parsed = JSON.parse(s);
     } catch (err) {
@@ -680,8 +655,6 @@ async function migrateOldUserDataIfNeeded() {
         "migrateOldUserDataIfNeeded: failed to parse old data after cleaning. Sample start:",
         s.slice(0, 200)
       );
-      // Give up gracefully — do not throw. Mark migrated to avoid retry loops if you want,
-      // or just skip marking so you can debug later. Here we skip migration.
       return;
     }
   } else {
@@ -692,15 +665,11 @@ async function migrateOldUserDataIfNeeded() {
     return;
   }
 
-  // If parsing succeeded but parsed is falsy, bail out
   if (!parsed) {
     console.warn("migrateOldUserDataIfNeeded: parsed is falsy, skipping");
     return;
   }
 
-  /* =========================
-       FIND TARGET CHARACTER
-  ========================= */
   const localCharacters = await db.characters
     .where("discordId")
     .equals(discordId)
@@ -710,7 +679,6 @@ async function migrateOldUserDataIfNeeded() {
     console.info(
       "migrateOldUserDataIfNeeded: no local characters to merge into, skipping"
     );
-    // optionally: create a new character here if you want
     await db.users.put({
       discordId,
       updatedAt: Date.now(),
@@ -730,10 +698,6 @@ async function migrateOldUserDataIfNeeded() {
     if (match) targetChar = match;
   }
 
-  /* =========================
-      MERGE ENTE DATA
-  ========================= */
-
   if (Array.isArray(parsed.entes)) {
     for (const oldEnte of parsed.entes) {
       if (!oldEnte?.id) continue;
@@ -749,7 +713,6 @@ async function migrateOldUserDataIfNeeded() {
         notes: oldEnte.notes ?? "",
         customImage: oldEnte.image ?? "",
         favorite: oldEnte.favorite ?? false,
-        order: oldEnte.order ?? Date.now(),
         updatedAt: Date.now(),
         isDirty: true,
       };
@@ -761,21 +724,18 @@ async function migrateOldUserDataIfNeeded() {
           characterId: targetChar.id!,
           enteID: oldEnte.id,
           ...next,
+          order: oldEnte.order ?? Date.now(),
+          isDeleted: false,
         });
       }
     }
 
-    // Also update the character name from export
     await db.characters.update(targetChar.id!, {
       charName: parsed.name ?? targetChar.charName,
       isDirty: true,
       updatedAt: Date.now(),
     });
   }
-
-  /* =========================
-       MARK MIGRATED
-  ========================= */
 
   await db.users.put({
     discordId,
@@ -796,7 +756,6 @@ async function pullRemoteEntes() {
   const remoteUserId = getRemoteUserId();
   if (!remoteUserId) return;
 
-  // Get all remote characters first
   const { data: remoteChars } = await supabase
     .from("characters")
     .select("id")
@@ -819,7 +778,6 @@ async function pullRemoteEntes() {
 
     if (!remoteEntes) continue;
 
-    // ---- Remove local entes that no longer exist remotely ----
     const localEntesAll = await db.entes
       .where("characterId")
       .equals(localChar.id!)
@@ -829,13 +787,10 @@ async function pullRemoteEntes() {
 
     for (const le of nonDeletedLocal) {
       if (!remoteEnteIds.has(le.enteID) && !le.isDirty) {
-        // This ente was deleted on another device
         await db.entes.delete(le.id!);
       }
     }
-    // ---------------------------------------------------------
 
-    // Continue with normal pull (unchanged)
     for (const remote of remoteEntes) {
       const existing = await db.entes
         .where("[characterId+enteID]")
@@ -851,7 +806,7 @@ async function pullRemoteEntes() {
           amount: remote.amount,
           unlockLevel: remote.unlock_level,
           favorite: remote.favorite,
-          order: remote.order,
+          order: Date.now(),   // local order, not from remote
           notes: remote.notes ?? "",
           customImage: remote.custom_image ?? "",
           updatedAt: remoteTime,
@@ -863,7 +818,7 @@ async function pullRemoteEntes() {
             amount: remote.amount,
             unlockLevel: remote.unlock_level,
             favorite: remote.favorite,
-            order: remote.order,
+            // order: NOT overwritten – keep local order
             notes: remote.notes ?? "",
             customImage: remote.custom_image ?? "",
             updatedAt: remoteTime,
@@ -883,7 +838,6 @@ async function pullRemoteLoadouts() {
   const remoteUserId = getRemoteUserId();
   if (!remoteUserId) return;
 
-  // Get all remote characters
   const { data: remoteChars } = await supabase
     .from("characters")
     .select("id")
@@ -907,7 +861,6 @@ async function pullRemoteLoadouts() {
     if (!remoteLoadouts) continue;
 
     for (const remote of remoteLoadouts) {
-      // Match by remoteId
       const existing = await db.loadouts
         .where("remoteId")
         .equals(remote.id)
@@ -915,7 +868,7 @@ async function pullRemoteLoadouts() {
 
       const remoteTime = new Date(remote.updated_at).getTime();
 
-      const mappedData = {
+      const loadoutData = {
         hp: remote.hp,
         atk: remote.atk,
         weapon: remote.weapon,
@@ -930,18 +883,18 @@ async function pullRemoteLoadouts() {
 
       if (!existing) {
         await db.loadouts.add({
-          remoteId: remote.id,
           characterId: localChar.id!,
+          remoteId: remote.id,
           name: remote.name,
-          data: mappedData,
+          data: loadoutData,
           updatedAt: remoteTime,
-          isDirty: false,
           isDeleted: false,
+          isDirty: false,
         });
       } else if (remoteTime > existing.updatedAt) {
         await db.loadouts.update(existing.id!, {
           name: remote.name,
-          data: mappedData,
+          data: loadoutData,
           updatedAt: remoteTime,
           isDirty: false,
         });
@@ -988,7 +941,6 @@ async function pullRemoteCharacters() {
       continue;
     }
 
-    // Update if newer
     if (remoteTime > local.updatedAt) {
       await db.characters.update(local.id!, {
         charName: remote.char_name,
@@ -1011,7 +963,6 @@ async function pullRemoteCharacters() {
     }
   }
 
-  // Remove local characters not present in remote (only if not dirty, to avoid deleting unsynced new characters)
   const remoteIds = new Set(remoteChars.map(c => c.id));
   const allLocal = await db.characters
     .where("discordId")
@@ -1033,8 +984,21 @@ async function pullRemoteCharacters() {
 ========================= */
 
 export async function syncAll() {
+  const discordId = getDiscordId();
+
+  // Only run export import once per user (using localStorage)
+  if (discordId) {
+    const alreadyImported = localStorage.getItem(`export_imported_${discordId}`);
+
+    if (!alreadyImported) {
+      await pullCharactersExport();
+
+      // Mark as imported so it never runs again
+      localStorage.setItem(`export_imported_${discordId}`, "true");
+    }
+  }
+
   await pullRemoteCharacters();
-  await pullCharactersExport();
   await migrateOldUserDataIfNeeded();
   await pushLocalChanges();
 }
