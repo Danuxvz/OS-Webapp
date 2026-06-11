@@ -59,12 +59,10 @@ export async function pushLocalChanges() {
         source: char.source ?? "web",
       };
 
-      // Only include external_id if it exists (exported characters only)
       if (char.externalId) {
         charPayload.external_id = char.externalId;
       }
 
-      // If we already have remoteId → use it
       if (char.remoteId) {
         charPayload.id = char.remoteId;
       }
@@ -87,7 +85,6 @@ export async function pushLocalChanges() {
 
       const remoteCharId = char.remoteId ?? charUpsert.data.id;
 
-      // Save remoteId locally if first insert
       if (!char.remoteId && remoteCharId) {
         await db.characters.update(char.id!, {
           remoteId: remoteCharId,
@@ -95,7 +92,7 @@ export async function pushLocalChanges() {
       }
 
       /* =========================
-           UPSERT ENTES (including soft‑delete propagation)
+           UPSERT ENTES
       ========================= */
 
       if (!remoteCharId) continue;
@@ -109,7 +106,6 @@ export async function pushLocalChanges() {
         const deletedEntes = localEntes.filter(e => e.isDeleted);
         const activeEntes = localEntes.filter(e => !e.isDeleted);
 
-        // Delete remotely
         for (const ente of deletedEntes) {
           const { error } = await supabase
             .from("entes")
@@ -123,18 +119,15 @@ export async function pushLocalChanges() {
               error
             );
           } else {
-            // Hard delete locally once the remote record is gone
             await db.entes.delete(ente.id!);
           }
         }
 
-        // Upsert remaining active entes
         if (activeEntes.length > 0) {
           const uniqueMap = new Map<string, any>();
 
           for (const ente of activeEntes) {
             const key = `${remoteCharId}_${ente.enteID}`;
-
             uniqueMap.set(key, {
               character_id: remoteCharId,
               ente_id: ente.enteID,
@@ -149,7 +142,6 @@ export async function pushLocalChanges() {
           }
 
           const enteRecords = Array.from(uniqueMap.values());
-
           const entesUpsert = await supabase
             .from("entes")
             .upsert(enteRecords, { onConflict: "character_id,ente_id" });
@@ -177,6 +169,7 @@ export async function pushLocalChanges() {
           character_id: remoteCharId,
           cards: inv.cards,
           consumables: inv.consumables,
+          customItems: inv.customItems ?? [],
           updated_at: new Date(inv.updatedAt).toISOString(),
         };
 
@@ -211,7 +204,6 @@ export async function pushLocalChanges() {
         .equals(char.id!)
         .toArray();
 
-      // 1. Delete soft‑deleted loadouts (unchanged)
       const deleted = localLoadouts.filter((l) => l.isDeleted);
       for (const l of deleted) {
         if (l.remoteId) {
@@ -225,18 +217,15 @@ export async function pushLocalChanges() {
             console.warn("Failed to delete loadout", l.name, error);
           }
         } else {
-          // No remoteId, just remove locally
           await db.loadouts.delete(l.id!);
         }
       }
 
       if (remoteCharId) {
-        // 2. Separate active loadouts
         const active = localLoadouts.filter((l) => !l.isDeleted);
         const existingLoadouts = active.filter((l) => l.remoteId);
         const newLoadouts = active.filter((l) => !l.remoteId);
 
-        // 3. Upsert existing loadouts (all have remoteId)
         if (existingLoadouts.length > 0) {
           const existingRecords = existingLoadouts.map((l) => ({
             id: l.remoteId,
@@ -261,7 +250,6 @@ export async function pushLocalChanges() {
           }
         }
 
-        // 4. Insert new loadouts (no remoteId, no id field)
         if (newLoadouts.length > 0) {
           const newRecords = newLoadouts.map((l) => ({
             character_id: remoteCharId,
@@ -284,7 +272,6 @@ export async function pushLocalChanges() {
           if (error) {
             console.warn("pushLocalChanges: loadouts insert error", error);
           } else if (inserted) {
-            // Assign the returned remote IDs back to local records
             for (const remote of inserted) {
               const local = newLoadouts.find(
                 (l) => l.name === remote.name && l.characterId === char.id
@@ -299,10 +286,6 @@ export async function pushLocalChanges() {
         }
       }
 
-      /* =========================
-           MARK SYNCED
-      ========================= */
-
       await db.characters.update(char.id!, {
         isDirty: false,
       });
@@ -316,7 +299,6 @@ export async function pushLocalChanges() {
   }
 }
 
-
 export async function deleteRemoteCharacter(localCharId: number) {
   const localChar = await db.characters.get(localCharId);
   if (!localChar || !localChar.remoteId) return;
@@ -324,7 +306,6 @@ export async function deleteRemoteCharacter(localCharId: number) {
   const charId = localChar.remoteId;
 
   try {
-    // Delete character remotely
     const { error: charError } = await supabase
       .from("characters")
       .delete()
@@ -338,7 +319,6 @@ export async function deleteRemoteCharacter(localCharId: number) {
       );
     }
 
-    // Delete related remote entes
     const { error: entesError } = await supabase
       .from("entes")
       .delete()
@@ -352,7 +332,6 @@ export async function deleteRemoteCharacter(localCharId: number) {
       );
     }
 
-    // Delete remote inventory
     const { error: invError } = await supabase
       .from("inventory")
       .delete()
@@ -366,7 +345,6 @@ export async function deleteRemoteCharacter(localCharId: number) {
       );
     }
 
-    // Delete remote loadouts
     const { error: loadoutError } = await supabase
       .from("loadouts")
       .delete()
@@ -486,6 +464,7 @@ export async function pullCharactersExport() {
         characterId: localChar!.id!,
         cards: {},
         consumables: {},
+        customItems: [],
         updatedAt: Date.now(),
         isDirty: true,
       });
@@ -494,6 +473,7 @@ export async function pullCharactersExport() {
 
     if (!inventory!.cards) inventory!.cards = {};
     if (!inventory!.consumables) inventory!.consumables = {};
+    if (!Array.isArray(inventory!.customItems)) inventory!.customItems = [];
 
     const normalize = (s: string) =>
       String(s || "")
@@ -519,7 +499,6 @@ export async function pullCharactersExport() {
 
       const existing = existingMap.get(rawId);
       if (existing) {
-        // Only update if the amount actually changed
         if (existing.amount !== amount) {
           await db.entes.update(existing.id!, {
             amount,
@@ -550,7 +529,6 @@ export async function pullCharactersExport() {
       isDirty: true,
     });
 
-    // Zero out missing entes only if they aren’t already zero
     for (const ente of localEntes) {
       if (!parsedInventory[ente.enteID] && ente.amount !== 0) {
         await db.entes.update(ente.id!, {
@@ -810,7 +788,7 @@ async function pullRemoteEntes() {
           amount: remote.amount,
           unlockLevel: remote.unlock_level,
           favorite: remote.favorite,
-          order: Date.now(),   // local order, not from remote
+          order: Date.now(),
           notes: remote.notes ?? "",
           customImage: remote.custom_image ?? "",
           updatedAt: remoteTime,
@@ -822,7 +800,6 @@ async function pullRemoteEntes() {
             amount: remote.amount,
             unlockLevel: remote.unlock_level,
             favorite: remote.favorite,
-            // order: NOT overwritten – keep local order
             notes: remote.notes ?? "",
             customImage: remote.custom_image ?? "",
             updatedAt: remoteTime,
@@ -833,10 +810,6 @@ async function pullRemoteEntes() {
     }
   }
 }
-
-/* =========================
-   PULL REMOTE LOADOUTS (ID‑BASED)
-========================= */
 
 async function pullRemoteLoadouts() {
   const remoteUserId = getRemoteUserId();
@@ -903,6 +876,62 @@ async function pullRemoteLoadouts() {
           isDirty: false,
         });
       }
+    }
+  }
+}
+
+async function pullRemoteInventories() {
+  const remoteUserId = getRemoteUserId();
+  if (!remoteUserId) return;
+
+  const { data: remoteChars } = await supabase
+    .from("characters")
+    .select("id")
+    .eq("user_id", remoteUserId);
+
+  if (!remoteChars) return;
+
+  for (const remoteChar of remoteChars) {
+    const localChar = await db.characters
+      .where("remoteId")
+      .equals(remoteChar.id)
+      .first();
+
+    if (!localChar) continue;
+
+    const { data: remoteInv } = await supabase
+      .from("inventory")
+      .select("*")
+      .eq("character_id", remoteChar.id)
+      .single();
+
+    if (!remoteInv) continue;
+
+    const localInv = await db.inventory
+      .where("characterId")
+      .equals(localChar.id!)
+      .first();
+
+    const remoteTime = new Date(remoteInv.updated_at).getTime();
+
+    if (!localInv) {
+      await db.inventory.add({
+        characterId: localChar.id!,
+        remoteId: remoteInv.id,
+        cards: remoteInv.cards ?? {},
+        consumables: remoteInv.consumables ?? {},
+        customItems: remoteInv.customItems ?? [],
+        updatedAt: remoteTime,
+        isDirty: false,
+      });
+    } else if (remoteTime > localInv.updatedAt) {
+      await db.inventory.update(localInv.id!, {
+        cards: remoteInv.cards ?? {},
+        consumables: remoteInv.consumables ?? {},
+        customItems: remoteInv.customItems ?? [],
+        updatedAt: remoteTime,
+        isDirty: false,
+      });
     }
   }
 }
@@ -981,6 +1010,7 @@ async function pullRemoteCharacters() {
 
   await pullRemoteEntes();
   await pullRemoteLoadouts();
+  await pullRemoteInventories();
 }
 
 /* =========================
@@ -988,7 +1018,6 @@ async function pullRemoteCharacters() {
 ========================= */
 
 export async function syncAll() {
-  // Always pull the latest export data (no localStorage guard)
   await pullCharactersExport();
   await pullRemoteCharacters();
   await migrateOldUserDataIfNeeded();

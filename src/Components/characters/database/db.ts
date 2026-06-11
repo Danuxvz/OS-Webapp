@@ -52,12 +52,20 @@ export interface Character extends SyncMeta {
   schemaVersion: number;
 }
 
+export interface CustomItem {
+  id: string;
+  title: string;
+  desc: string;
+  count: number;
+}
+
 export interface Inventory extends SyncMeta {
   id?: number;
   characterId: number;
   remoteId?: string;
   cards: Record<string, number>;
   consumables: Record<string, number>;
+  customItems: CustomItem[];
 }
 
 export interface CharacterEnte extends SyncMeta {
@@ -71,7 +79,7 @@ export interface CharacterEnte extends SyncMeta {
   order: number;
   notes?: string;
   customImage?: string;
-  isDeleted?: boolean;          // <-- new field
+  isDeleted?: boolean;
 }
 
 export interface EnteMetadata extends SyncMeta {
@@ -261,7 +269,6 @@ class OpenSourceDB extends Dexie {
             data.hp.baseCurrent = data.hp.baseMax ?? 0;
             changed = true;
           }
-          // Add barriers array if missing
           if (!Array.isArray(data.hp.barriers)) {
             data.hp.barriers = [];
             changed = true;
@@ -283,7 +290,6 @@ class OpenSourceDB extends Dexie {
           }
         }
 
-        // Migration for slots from old shape (max) to new shape
         if (data?.slots) {
           if (typeof data.slots.max === "number") {
             data.slots = {
@@ -318,7 +324,6 @@ class OpenSourceDB extends Dexie {
           }
         }
 
-        // Migration for habilidadesPasivas from string[] to LoadoutHE
         if (data?.habilidadesPasivas) {
           if (Array.isArray(data.habilidadesPasivas)) {
             data.habilidadesPasivas = {
@@ -338,7 +343,6 @@ class OpenSourceDB extends Dexie {
           }
         }
 
-        // Add isDeleted field if missing
         if (l.isDeleted === undefined) {
           l.isDeleted = false;
           changed = true;
@@ -353,7 +357,7 @@ class OpenSourceDB extends Dexie {
       }
     });
 
-    // Version 9 – add isDeleted to entes (new)
+    // Version 9 – add isDeleted to entes
     this.version(9).stores({
       // no schema changes, just data migration
     }).upgrade(async (tx) => {
@@ -362,6 +366,19 @@ class OpenSourceDB extends Dexie {
         if (ente.isDeleted === undefined) {
           ente.isDeleted = false;
           await tx.table("entes").put(ente);
+        }
+      }
+    });
+
+    // Version 10 – add customItems to inventory
+    this.version(10).stores({
+      // no schema changes (customItems is just a JSON property)
+    }).upgrade(async (tx) => {
+      const inventories = await tx.table("inventory").toArray();
+      for (const inv of inventories) {
+        if (!Array.isArray(inv.customItems)) {
+          inv.customItems = [];
+          await tx.table("inventory").put(inv);
         }
       }
     });
