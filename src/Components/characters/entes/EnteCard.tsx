@@ -69,7 +69,8 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail,
   const isDaruma = /^E123[A-J]$/i.test(ente.id);
   const canRandomize = isDaruma && (amount ?? 0) >= 2;
 
-  const darumaButton = onRandomizeDaruma ? (
+  // Only render the button for Daruma entes
+  const darumaButton = (onRandomizeDaruma && isDaruma) ? (
     <button
       className="ente-daruma-btn"
       disabled={!canRandomize}

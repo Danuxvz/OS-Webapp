@@ -17,6 +17,7 @@ export const DARUMA_IDS = [
 
 const DARUMA_RE = /^E123[A-J]$/i;
 const DAILY_LIMIT = 3;
+const DEFAULT_GUILD_ID = "1231389758140317726";
 
 function getCharacterCode(externalId?: string | null) {
   const code = externalId?.split("::")[1]?.trim().toUpperCase();
@@ -53,7 +54,7 @@ async function countDarumaUses(characterCode: string, sourceEnte: string) {
 }
 
 export async function randomizeDarumaForCharacter(
-  characterId: number,
+  characterId: number,       // local Dexie character ID
   sourceEnteID: string
 ) {
   const character = await db.characters.get(characterId);
@@ -93,11 +94,14 @@ export async function randomizeDarumaForCharacter(
   // Perform the local swap via CharacterManager
   await characterManager.randomizeDaruma(characterId, sourceEnteID, targetEnteID);
 
+  // ✅ Use the Supabase remote ID, not the local Dexie ID
+  const supabaseCharacterId = character.remoteId;
+
   // Enqueue the bot task
   const { error } = await supabase.from("daruma_transactions").insert({
-    character_id: characterId,
+    character_id: supabaseCharacterId,
     character_code: characterCode,
-    guild_id: null,
+    guild_id: DEFAULT_GUILD_ID,
     source_ente: sourceEnteID,
     target_ente: targetEnteID,
     source_amount: sourceAmount,
