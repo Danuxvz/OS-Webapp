@@ -12,6 +12,7 @@ import FOOD6 from "@/assets/FOOD/FOOD6.png";
 import FOOD206 from "@/assets/FOOD/FOOD-206.png";
 import FOOD207 from "@/assets/FOOD/FOOD-207.png";
 import FOOD208 from "@/assets/FOOD/FOOD-208.png";
+import customItem from "@/assets/custom-item.png";
 
 interface Props {
   characterId: number | null;
@@ -40,20 +41,8 @@ interface InventoryState {
   customItems: CustomItem[];
 }
 
-/* Shared pixel‑art image for all custom cards */
-const CUSTOM_CARD_IMG =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 16 16" shape-rendering="crispEdges">
-    <rect width="16" height="16" fill="#f2e7c9"/>
-    <rect x="1" y="1" width="14" height="14" fill="#d8c49a"/>
-    <rect x="2" y="2" width="12" height="12" fill="#f7f0df"/>
-    <rect x="4" y="4" width="8" height="8" fill="#b7a06a"/>
-    <rect x="5" y="5" width="6" height="6" fill="#e6d2a0"/>
-    <rect x="6" y="6" width="4" height="4" fill="#8b6f3d"/>
-    <rect x="7" y="7" width="2" height="2" fill="#f7f0df"/>
-  </svg>
-`);
+/* Shared image for all custom cards – replace the import above with your actual image */
+const CUSTOM_CARD_IMG = customItem;
 
 const CARDS: ItemMap = {
   AE_Card: { name: "AE Card", img: "https://cdn.discordapp.com/emojis/1279228009039138836.webp?size=128" },
@@ -96,6 +85,11 @@ export default function InventorySection({ characterId }: Props) {
   const [isCreatingCustom, setIsCreatingCustom] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
   const [customDesc, setCustomDesc] = useState("");
+
+  // Track editing state per custom item
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
 
   useEffect(() => {
     if (!characterId) return;
@@ -191,6 +185,33 @@ export default function InventorySection({ characterId }: Props) {
     await persistInventory(next);
   };
 
+  // Start editing a custom item
+  const startEditing = (item: CustomItem) => {
+    setEditingId(item.id);
+    setEditTitle(item.title);
+    setEditDesc(item.desc);
+  };
+
+  // Save edited title/description
+  const saveEdit = async () => {
+    if (!editingId) return;
+
+    const next = structuredClone(inventory);
+    const item = next.customItems.find((it) => it.id === editingId);
+    if (!item) return;
+
+    item.title = editTitle.trim() || item.title;  // keep old if blank
+    item.desc = editDesc.trim();
+
+    await persistInventory(next);
+    setEditingId(null);
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
+
   return (
     <div className="inventory-section container-fluid">
       <h2 className="mb-3">Inventory</h2>
@@ -211,41 +232,75 @@ export default function InventorySection({ characterId }: Props) {
         onChange={updateCount}
       />
 
+      {/* Custom Section – Horizontal rows */}
       <div className="inv-section">
         <h3 className="mb-2">Custom</h3>
 
-        <div className="inv-grid">
+        <div className="custom-list">
           {inventory.customItems.map((item) => (
-            <div
-              key={item.id}
-              className="inv-slot"
-              title={item.desc}
-              onClick={() => updateCustomCount(item.id, 1)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                updateCustomCount(item.id, -1);
-              }}
-            >
-              <img
-                src={CUSTOM_CARD_IMG}
-                alt={item.title}
-                className="inv-img"
-                style={{ imageRendering: "pixelated", filter: "none" }}
-              />
-              <div className="inv-label">{item.title}</div>
-              <div className="inv-desc">{item.desc}</div>
-              <div className="inv-count">x{item.count}</div>
+            <div key={item.id} className="custom-card">
+              {/* Count badge */}
+              <div
+                className="custom-count"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateCustomCount(item.id, 1);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  updateCustomCount(item.id, -1);
+                }}
+                title="Left-click +1 / Right-click -1"
+              >
+                x{item.count}
+              </div>
+
+              {/* Image */}
+              <img src={CUSTOM_CARD_IMG} alt="" className="custom-img" />
+
+              {/* Title & Description (editable) */}
+              <div className="custom-text">
+                {editingId === item.id ? (
+                  <div className="custom-edit-form">
+                    <input
+                      className="custom-edit-title"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="Title"
+                      autoFocus
+                    />
+                    <textarea
+                      className="custom-edit-desc"
+                      value={editDesc}
+                      onChange={(e) => setEditDesc(e.target.value)}
+                      placeholder="Description"
+                      rows={2}
+                    />
+                    <div className="custom-edit-buttons">
+                      <button onClick={saveEdit}>Save</button>
+                      <button onClick={cancelEdit}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => startEditing(item)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <div className="custom-title">{item.title}</div>
+                    <div className="custom-desc">{item.desc}</div>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
+        </div>
 
-          <div
-            className="inv-slot inv-slot-add"
-            onClick={() => setIsCreatingCustom(true)}
-            title="Create custom item"
-          >
-            <div className="inv-add-plus">+</div>
-            <div className="inv-label">Custom</div>
-          </div>
+        {/* Create custom card button */}
+        <div
+          className="custom-add-btn"
+          onClick={() => setIsCreatingCustom(true)}
+        >
+          + Add custom card
         </div>
 
         {isCreatingCustom && (
