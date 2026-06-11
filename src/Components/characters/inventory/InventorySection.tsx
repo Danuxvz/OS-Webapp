@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import "../characterSheetStyles/InventorySection.scss";
 import { db } from "../database/db";
 
-// Food images – import as before
+// Food images
 import FOOD1 from "@/assets/FOOD/FOOD1.png";
 import FOOD2 from "@/assets/FOOD/FOOD2.png";
 import FOOD3 from "@/assets/FOOD/FOOD3.png";
@@ -58,12 +58,28 @@ const CUSTOM_CARD_IMG =
 const CARDS: ItemMap = {
   AE_Card: { name: "AE Card", img: "https://cdn.discordapp.com/emojis/1279228009039138836.webp?size=128" },
   Basic_Attack: { name: "Basic Attack Card", img: "https://cdn.discordapp.com/emojis/1279227206157078569.webp?size=128" },
-  // ... (all the other card entries remain the same)
+  Ethrielle: { name: "Ethrielle Card", img: "https://cdn.discordapp.com/emojis/1279227114213871718.webp?size=128" },
+  Engaar: { name: "Acción Diplomática (Engaar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Halagar: { name: "Acción Diplomática (Halagar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Interpretar: { name: "Acción Diplomática (Interpretar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Intimidar: { name: "Acción Diplomática (Intimidar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Negociar: { name: "Acción Diplomática (Negociar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Persuadir: { name: "Acción Diplomática (Persuadir)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Rogar: { name: "Acción Diplomática (Rogar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Seducir: { name: "Acción Diplomática (Seducir)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
+  Sobornar: { name: "Acción Diplomática (Sobornar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" }
 };
 
 const CONSUMABLES: ItemMap = {
   KudagiBento: { name: "Kudagi Bento", desc: "Recupera un 25% de HP", img: FOOD1 },
-  // ... (all the other consumable entries remain the same)
+  AstralDoguBento: { name: "Astral Dogu Bento", desc: "Recupera HP al azar", img: FOOD2 },
+  GetStrongBento: { name: "Get Strong Bento", desc: "Recupera un 50% de HP", img: FOOD3 },
+  ScarletSpectralMiso: { name: "Scarlet Spectral Miso", desc: "Recupera cartas", img: FOOD4 },
+  ShellSushi: { name: "Shell Sushi", desc: "Recupera cartas", img: FOOD5 },
+  SpicyFireRamen: { name: "Spicy Fire Ramen", desc: "Recupera cartas", img: FOOD6 },
+  MomijiManju: { name: "Momiji Manju", desc: "+2 al dado", img: FOOD206 },
+  MochisDeBaku: { name: "Mochis de Baku", desc: "+4 al dado", img: FOOD207 },
+  TaiyakiKijyo: { name: "Taiyaki de Kijyo", desc: "+6 al dado", img: FOOD208 },
 };
 
 function makeId() {
