@@ -5,7 +5,7 @@ import EnteCard from "./EnteCard";
 import { characterManager } from "../CharacterManager";
 import { getEnteMetadata } from "../../../services/enteMetadataService";
 import { db } from "../database/db";
-import { randomizeDarumaForCharacter } from "../../../services/darumaService";
+import { randomizeDarumaForCharacter } from "../../../services/DarumaService";
 
 import "../characterSheetStyles/EntesSection.scss";
 
