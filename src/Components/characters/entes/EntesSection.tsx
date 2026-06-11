@@ -5,6 +5,7 @@ import EnteCard from "./EnteCard";
 import { characterManager } from "../CharacterManager";
 import { getEnteMetadata } from "../../../services/enteMetadataService";
 import { db } from "../database/db";
+import { randomizeDarumaForCharacter } from "../../../services/darumaService";
 
 import "../characterSheetStyles/EntesSection.scss";
 
@@ -333,6 +334,19 @@ function EntesSection({ characterId }: EntesSectionProps) {
     );
   }
 
+  // Daruma randomization handler
+  async function handleRandomizeDaruma(enteId: string) {
+    if (!characterId) return;
+    try {
+      await randomizeDarumaForCharacter(characterId, enteId);
+      await loadEntes();
+    } catch (err: any) {
+      console.warn("Daruma randomization failed:", err);
+      alert(err?.message ?? "Daruma randomization failed.");
+      await loadEntes();
+    }
+  }
+
   if (!characterId) {
     return (
       <div className="entes-section">
@@ -451,6 +465,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
                       }}
                       computeUnlockLevel={computeUnlockLevel}
                       hideThumbnail
+                      onRandomizeDaruma={handleRandomizeDaruma}
                     />
                   </div>
                 )}
@@ -521,6 +536,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
                       }
                     }}
                     computeUnlockLevel={computeUnlockLevel}
+                    onRandomizeDaruma={handleRandomizeDaruma}
                   />
                 </li>
               ))

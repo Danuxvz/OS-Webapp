@@ -14,6 +14,14 @@ function createSyncMeta() {
 
 type Listener = (payload: any) => void;
 
+export type DarumaSwapResult = {
+  characterId: number;
+  sourceEnteID: string;
+  targetEnteID: string;
+  sourceAmount: number;
+  targetAmount: number;
+};
+
 class CharacterManager {
   private listeners: Map<string, Set<Listener>> = new Map();
 
@@ -66,7 +74,7 @@ class CharacterManager {
       characterId,
       cards: {},
       consumables: {},
-      customItems: [],   // <-- new: initialise custom items array
+      customItems: [],
       ...createSyncMeta(),
     });
 
@@ -76,7 +84,6 @@ class CharacterManager {
   }
 
   async deleteCharacter(characterId: number) {
-    // Hard delete (reverted to original behaviour)
     await db.characters.delete(characterId);
     await db.inventory.where({ characterId }).delete();
     await db.entes.where({ characterId }).delete();
@@ -269,6 +276,103 @@ class CharacterManager {
 
     const entes = await this.getEntes(characterId);
     this.emit("entesUpdated", { characterId, entes });
+  }
+
+  /* =========================
+     DARUMA RANDOMIZATION
+  ========================= */
+
+  private isDaruma(id: string) {
+    return /^E123[A-J]$/i.test(id);
+  }
+
+  private pickRandomDaruma(exclude: string) {
+    const pool = [
+      "E123A", "E123B", "E123C", "E123D", "E123E",
+      "E123F", "E123G", "E123H", "E123I", "E123J"
+    ].filter((id) => id !== exclude.toUpperCase());
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  async randomizeDaruma(
+    characterId: number,
+    sourceEnteID: string,
+    forcedTargetEnteID?: string
+  ): Promise<DarumaSwapResult> {
+    if (!this.isDaruma(sourceEnteID)) {
+      throw new Error("That ente is not a Daruma.");
+    }
+
+    const source = await db.entes
+      .where("[characterId+enteID]")
+      .equals([characterId, sourceEnteID])
+      .first();
+
+    if (!source || source.isDeleted) {
+      throw new Error("Daruma not found.");
+    }
+
+    const targetEnteID = (forcedTargetEnteID && forcedTargetEnteID !== sourceEnteID)
+      ? forcedTargetEnteID
+      : this.pickRandomDaruma(sourceEnteID);
+
+    const targetRaw = await db.entes
+      .where("[characterId+enteID]")
+      .equals([characterId, targetEnteID])
+      .first();
+    const target = targetRaw && !targetRaw.isDeleted ? targetRaw : null;
+
+    const now = Date.now();
+    const sourceAmount = source.amount ?? 0;
+    const targetAmount = target?.amount ?? 0;
+
+    await db.transaction("rw", db.entes, async () => {
+      if (target) {
+        // Temporary rename to avoid unique constraint collision
+        const tempId = `__daruma_swap__${now}_${Math.random().toString(36).slice(2, 8)}`;
+
+        await db.entes.update(target.id!, {
+          enteID: tempId,
+          updatedAt: now,
+          isDirty: true,
+        });
+
+        await db.entes.update(source.id!, {
+          enteID: targetEnteID,
+          amount: targetAmount,
+          updatedAt: now,
+          isDirty: true,
+        });
+
+        await db.entes.update(target.id!, {
+          enteID: sourceEnteID,
+          amount: sourceAmount,
+          updatedAt: now,
+          isDirty: true,
+        });
+      } else {
+        // Only source exists; just swap its enteID
+        await db.entes.update(source.id!, {
+          enteID: targetEnteID,
+          amount: sourceAmount,
+          updatedAt: now,
+          isDirty: true,
+        });
+      }
+    });
+
+    await this.recalculateCharacterBonuses(characterId);
+
+    const entes = await this.getEntes(characterId);
+    this.emit("entesUpdated", { characterId, entes });
+
+    return {
+      characterId,
+      sourceEnteID,
+      targetEnteID,
+      sourceAmount,
+      targetAmount,
+    };
   }
 
   /* =========================

@@ -24,9 +24,10 @@ interface Props {
   onDelete: (id: string) => void;
   computeUnlockLevel: (amount: number) => number;
   hideThumbnail?: boolean;
+  onRandomizeDaruma?: (enteId: string) => void;
 }
 
-function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail }: Props) {
+function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail, onRandomizeDaruma }: Props) {
   const isMobile = useMediaQuery("(max-width: 768px)");
   const [amount, setAmount] = useState(ente.amount || 0);
   const [unlockLevel, setUnlockLevel] = useState(
@@ -65,6 +66,23 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail 
     setShowExtras(false);
   };
 
+  const isDaruma = /^E123[A-J]$/i.test(ente.id);
+  const canRandomize = isDaruma && (amount ?? 0) >= 2;
+
+  const darumaButton = onRandomizeDaruma ? (
+    <button
+      className="ente-daruma-btn"
+      disabled={!canRandomize}
+      title={canRandomize ? "Randomize Daruma color" : "Need at least 2 copies to randomize"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onRandomizeDaruma(ente.id);
+      }}
+    >
+      🎲
+    </button>
+  ) : null;
+
   const actions = (
     <>
       <button
@@ -87,6 +105,7 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail 
         }}
       />
       {amount === 0 && <div className="ente-amount-warning">⚠️</div>}
+      {darumaButton}
     </>
   );
 

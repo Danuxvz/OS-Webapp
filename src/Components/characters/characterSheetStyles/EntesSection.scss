@@ -671,3 +671,18 @@
 .gallery-card[draggable="true"]:active {
   opacity: 0.7;
 }
+
+.ente-daruma-btn {
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  margin-left: 4px;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
