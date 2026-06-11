@@ -519,11 +519,14 @@ export async function pullCharactersExport() {
 
       const existing = existingMap.get(rawId);
       if (existing) {
-        await db.entes.update(existing.id!, {
-          amount,
-          updatedAt: Date.now(),
-          isDirty: true,
-        });
+        // Only update if the amount actually changed
+        if (existing.amount !== amount) {
+          await db.entes.update(existing.id!, {
+            amount,
+            updatedAt: Date.now(),
+            isDirty: true,
+          });
+        }
       } else {
         await db.entes.add({
           characterId: localChar!.id!,
@@ -547,8 +550,9 @@ export async function pullCharactersExport() {
       isDirty: true,
     });
 
+    // Zero out missing entes only if they aren’t already zero
     for (const ente of localEntes) {
-      if (!parsedInventory[ente.enteID]) {
+      if (!parsedInventory[ente.enteID] && ente.amount !== 0) {
         await db.entes.update(ente.id!, {
           amount: 0,
           updatedAt: Date.now(),
@@ -984,20 +988,8 @@ async function pullRemoteCharacters() {
 ========================= */
 
 export async function syncAll() {
-  const discordId = getDiscordId();
-
-  // Only run export import once per user (using localStorage)
-  if (discordId) {
-    const alreadyImported = localStorage.getItem(`export_imported_${discordId}`);
-
-    if (!alreadyImported) {
-      await pullCharactersExport();
-
-      // Mark as imported so it never runs again
-      localStorage.setItem(`export_imported_${discordId}`, "true");
-    }
-  }
-
+  // Always pull the latest export data (no localStorage guard)
+  await pullCharactersExport();
   await pullRemoteCharacters();
   await migrateOldUserDataIfNeeded();
   await pushLocalChanges();
