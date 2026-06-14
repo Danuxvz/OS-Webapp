@@ -106,20 +106,26 @@ export async function pushLocalChanges() {
         const deletedEntes = localEntes.filter(e => e.isDeleted);
         const activeEntes = localEntes.filter(e => !e.isDeleted);
 
+        // Soft‑delete on remote: update is_deleted = true instead of deleting the row
         for (const ente of deletedEntes) {
           const { error } = await supabase
             .from("entes")
-            .delete()
+            .update({ is_deleted: true, updated_at: new Date().toISOString() })
             .eq("character_id", remoteCharId)
             .eq("ente_id", ente.enteID);
-          if (error) {
+
+          if (!error) {
+            // Mark local record as synced (already isDeleted)
+            await db.entes.update(ente.id!, {
+              isDirty: false,
+              updatedAt: Date.now(),
+            });
+          } else {
             console.warn(
-              "pushLocalChanges: ente delete error",
+              "pushLocalChanges: failed to mark ente deleted",
               ente.enteID,
               error
             );
-          } else {
-            await db.entes.delete(ente.id!);
           }
         }
 
@@ -137,6 +143,7 @@ export async function pushLocalChanges() {
               unlock_level: ente.unlockLevel,
               notes: ente.notes ?? null,
               custom_image: ente.customImage ?? null,
+              is_deleted: false,   // active entes are never deleted
               updated_at: new Date(ente.updatedAt).toISOString(),
             });
           }
@@ -419,7 +426,7 @@ export async function pullCharactersExport() {
 
     if (!localChar) {
       const id = await db.characters.add({
-        discordId: exp.owner_id,
+        discordId: String(exp.owner_id),   // ← String conversion
         remoteId: undefined,
         externalId,
         source: "external",
@@ -760,20 +767,38 @@ async function pullRemoteEntes() {
 
     if (!remoteEntes) continue;
 
-    const localEntesAll = await db.entes
+    // Split remote entes into active and deleted
+    const activeRemote = remoteEntes.filter(r => !r.is_deleted);
+    const deletedRemote = remoteEntes.filter(r => r.is_deleted);
+
+    // Remove local entes that were soft‑deleted on remote
+    for (const rd of deletedRemote) {
+      const local = await db.entes
+        .where("[characterId+enteID]")
+        .equals([localChar.id!, rd.ente_id])
+        .first();
+      if (local && !local.isDirty) {
+        await db.entes.delete(local.id!);
+      }
+    }
+
+    // Active remote ente IDs
+    const activeIds = new Set(activeRemote.map(r => r.ente_id));
+
+    // Delete local entes that are no longer present at all (and not dirty)
+    const localAll = await db.entes
       .where("characterId")
       .equals(localChar.id!)
       .toArray();
-    const nonDeletedLocal = localEntesAll.filter(e => !e.isDeleted);
-    const remoteEnteIds = new Set(remoteEntes.map(r => r.ente_id));
-
+    const nonDeletedLocal = localAll.filter(e => !e.isDeleted);
     for (const le of nonDeletedLocal) {
-      if (!remoteEnteIds.has(le.enteID) && !le.isDirty) {
+      if (!activeIds.has(le.enteID) && !le.isDirty) {
         await db.entes.delete(le.id!);
       }
     }
 
-    for (const remote of remoteEntes) {
+    // Process only active remote entes
+    for (const remote of activeRemote) {
       const existing = await db.entes
         .where("[characterId+enteID]")
         .equals([localChar.id!, remote.ente_id])
@@ -793,19 +818,19 @@ async function pullRemoteEntes() {
           customImage: remote.custom_image ?? "",
           updatedAt: remoteTime,
           isDirty: false,
+          isDeleted: false,
         });
-      } else {
-        if (remoteTime > existing.updatedAt) {
-          await db.entes.update(existing.id!, {
-            amount: remote.amount,
-            unlockLevel: remote.unlock_level,
-            favorite: remote.favorite,
-            notes: remote.notes ?? "",
-            customImage: remote.custom_image ?? "",
-            updatedAt: remoteTime,
-            isDirty: false,
-          });
-        }
+      } else if (remoteTime > existing.updatedAt) {
+        await db.entes.update(existing.id!, {
+          amount: remote.amount,
+          unlockLevel: remote.unlock_level,
+          favorite: remote.favorite,
+          notes: remote.notes ?? "",
+          customImage: remote.custom_image ?? "",
+          updatedAt: remoteTime,
+          isDirty: false,
+          // isDeleted is intentionally left untouched – local deletions are preserved
+        });
       }
     }
   }
