@@ -426,7 +426,7 @@ export async function pullCharactersExport() {
 
     if (!localChar) {
       const id = await db.characters.add({
-        discordId: String(exp.owner_id),   // ← String conversion
+        discordId: getDiscordId()!,
         remoteId: undefined,
         externalId,
         source: "external",

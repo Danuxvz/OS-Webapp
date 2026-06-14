@@ -256,7 +256,7 @@ export default function InventorySection({ characterId }: Props) {
               </div>
 
               {/* Image */}
-              <img src={CUSTOM_CARD_IMG} alt="" className="custom-img" />
+              <img src={CUSTOM_CARD_IMG} alt="" className="custom-icon" />
 
               {/* Title & Description (editable) */}
               <div className="custom-text">
