@@ -1,5 +1,6 @@
 import { supabase, getRemoteUserId, getDiscordId } from "./SupaBase.ts";
 import { db } from "../Components/characters/database/db";
+import type { Character } from "../Components/characters/database/db";
 
 /* =========================
    UTIL
@@ -26,6 +27,94 @@ function parseInventoryBlob(blob: string) {
   }
 
   return result;
+}
+
+/* =========================
+   DUPLICATE CLEANUP
+========================= */
+
+async function deduplicateCharacters() {
+  const currentDiscordId = getDiscordId();
+  if (!currentDiscordId) return;
+
+  const allChars = await db.characters.toArray();
+
+  // Group by externalId
+  const groups = new Map<string, Character[]>();
+  for (const c of allChars) {
+    if (!c.externalId) continue;
+    if (!groups.has(c.externalId)) groups.set(c.externalId, []);
+    groups.get(c.externalId)!.push(c);
+  }
+
+  // Process each externalId group
+  for (const chars of groups.values()) {
+    if (chars.length <= 1) continue;
+
+    // Prefer the one with the current user's discordId, else the latest updated
+    let keeper: Character | undefined =
+      chars.find(c => c.discordId === currentDiscordId) ?? chars[0];
+
+    // Find the most recently updated character in the group
+    for (const c of chars) {
+      if ((c.updatedAt ?? 0) > (keeper?.updatedAt ?? 0)) {
+        keeper = c;
+      }
+    }
+
+    if (!keeper) continue;   // should never happen
+
+    // Ensure keeper belongs to current user
+    if (keeper.discordId !== currentDiscordId) {
+      await db.characters.update(keeper.id!, {
+        discordId: currentDiscordId,
+        updatedAt: Date.now(),
+        isDirty: true,
+      });
+    }
+
+    // Process each duplicate
+    for (const dup of chars) {
+      if (dup.id === keeper.id) continue;
+
+      // Move entes from duplicate → keeper
+      const entes = await db.entes.where({ characterId: dup.id }).toArray();
+      for (const ente of entes) {
+        const existing = await db.entes
+          .where("[characterId+enteID]")
+          .equals([keeper.id!, ente.enteID])
+          .first();
+
+        if (!existing) {
+          await db.entes.update(ente.id!, {
+            characterId: keeper.id!,
+            updatedAt: Date.now(),
+            isDirty: true,
+          });
+        } else {
+          // Already present — just delete the duplicate ente
+          await db.entes.delete(ente.id!);
+        }
+      }
+
+      // Move loadouts
+      const loadouts = await db.loadouts.where({ characterId: dup.id }).toArray();
+      for (const l of loadouts) {
+        await db.loadouts.update(l.id!, {
+          characterId: keeper.id!,
+          updatedAt: Date.now(),
+          isDirty: true,
+        });
+      }
+
+      // Inventory is tightly coupled to a character; we keep the keeper's inventory.
+      // Duplicate's inventory (if any) is simply removed.
+      await db.inventory.where({ characterId: dup.id }).delete();
+
+      // Finally remove the duplicate character
+      await db.characters.delete(dup.id!);
+    }
+  }
 }
 
 /* =========================
@@ -115,7 +204,6 @@ export async function pushLocalChanges() {
             .eq("ente_id", ente.enteID);
 
           if (!error) {
-            // Mark local record as synced (already isDeleted)
             await db.entes.update(ente.id!, {
               isDirty: false,
               updatedAt: Date.now(),
@@ -143,7 +231,7 @@ export async function pushLocalChanges() {
               unlock_level: ente.unlockLevel,
               notes: ente.notes ?? null,
               custom_image: ente.customImage ?? null,
-              is_deleted: false,   // active entes are never deleted
+              is_deleted: false,
               updated_at: new Date(ente.updatedAt).toISOString(),
             });
           }
@@ -424,7 +512,17 @@ export async function pullCharactersExport() {
       .equals(externalId)
       .first();
 
-    if (!localChar) {
+    if (localChar) {
+      // Reassign to current user if it was imported under a wrong discordId
+      if (localChar.discordId !== getDiscordId()) {
+        await db.characters.update(localChar.id!, {
+          discordId: getDiscordId()!,
+          updatedAt: Date.now(),
+          isDirty: true,
+        });
+        localChar = await db.characters.get(localChar.id!);
+      }
+    } else {
       const id = await db.characters.add({
         discordId: getDiscordId()!,
         remoteId: undefined,
@@ -767,11 +865,9 @@ async function pullRemoteEntes() {
 
     if (!remoteEntes) continue;
 
-    // Split remote entes into active and deleted
     const activeRemote = remoteEntes.filter(r => !r.is_deleted);
     const deletedRemote = remoteEntes.filter(r => r.is_deleted);
 
-    // Remove local entes that were soft‑deleted on remote
     for (const rd of deletedRemote) {
       const local = await db.entes
         .where("[characterId+enteID]")
@@ -782,10 +878,8 @@ async function pullRemoteEntes() {
       }
     }
 
-    // Active remote ente IDs
     const activeIds = new Set(activeRemote.map(r => r.ente_id));
 
-    // Delete local entes that are no longer present at all (and not dirty)
     const localAll = await db.entes
       .where("characterId")
       .equals(localChar.id!)
@@ -797,7 +891,6 @@ async function pullRemoteEntes() {
       }
     }
 
-    // Process only active remote entes
     for (const remote of activeRemote) {
       const existing = await db.entes
         .where("[characterId+enteID]")
@@ -829,7 +922,6 @@ async function pullRemoteEntes() {
           customImage: remote.custom_image ?? "",
           updatedAt: remoteTime,
           isDirty: false,
-          // isDeleted is intentionally left untouched – local deletions are preserved
         });
       }
     }
@@ -973,10 +1065,18 @@ async function pullRemoteCharacters() {
   if (!remoteChars) return;
 
   for (const remote of remoteChars) {
-    const local = await db.characters
+    let local = await db.characters
       .where("remoteId")
       .equals(remote.id)
       .first();
+
+    // Fallback: try to find by externalId (in case local record lost remoteId)
+    if (!local && remote.external_id) {
+      local = await db.characters
+        .where("externalId")
+        .equals(remote.external_id)
+        .first();
+    }
 
     const remoteTime = new Date(remote.updated_at).getTime();
 
@@ -997,6 +1097,15 @@ async function pullRemoteCharacters() {
         isDirty: false,
       });
       continue;
+    }
+
+    // If found by externalId but missing remoteId, attach remoteId and update
+    if (!local.remoteId) {
+      await db.characters.update(local.id!, {
+        remoteId: remote.id,
+        updatedAt: Date.now(),
+        isDirty: true,
+      });
     }
 
     if (remoteTime > local.updatedAt) {
@@ -1043,6 +1152,9 @@ async function pullRemoteCharacters() {
 ========================= */
 
 export async function syncAll() {
+  // Clean up duplicate exported characters first
+  await deduplicateCharacters();
+
   await pullCharactersExport();
   await pullRemoteCharacters();
   await migrateOldUserDataIfNeeded();
