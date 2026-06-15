@@ -30,13 +30,10 @@ function parseInventoryBlob(blob: string) {
 }
 
 /* =========================
-   DUPLICATE CLEANUP
+   DUPLICATE CLEANUP (LOCAL ONLY)
 ========================= */
 
 async function deduplicateCharacters() {
-  const currentDiscordId = getDiscordId();
-  if (!currentDiscordId) return;
-
   const allChars = await db.characters.toArray();
 
   // Group by externalId
@@ -51,6 +48,7 @@ async function deduplicateCharacters() {
     if (chars.length <= 1) continue;
 
     // Prefer the one with the current user's discordId, else the latest updated
+    const currentDiscordId = getDiscordId();
     let keeper: Character | undefined =
       chars.find(c => c.discordId === currentDiscordId) ?? chars[0];
 
@@ -62,84 +60,11 @@ async function deduplicateCharacters() {
 
     if (!keeper) continue;
 
-    // Ensure keeper belongs to current user
-    if (keeper.discordId !== currentDiscordId) {
-      await db.characters.update(keeper.id!, {
-        discordId: currentDiscordId,
-        updatedAt: Date.now(),
-        isDirty: true,
-      });
-    }
-
-    // Find the remote character row for the externalId (should be unique)
-    let remoteKeeperId: string | undefined;
-    try {
-      const { data: remoteChar } = await supabase
-        .from("characters")
-        .select("id")
-        .eq("external_id", keeper.externalId)
-        .single();
-
-      if (remoteChar?.id) {
-        remoteKeeperId = remoteChar.id;
-        // Update keeper's local remoteId if needed
-        if (keeper.remoteId !== remoteKeeperId) {
-          await db.characters.update(keeper.id!, {
-            remoteId: remoteKeeperId,
-            updatedAt: Date.now(),
-            isDirty: true,
-          });
-        }
-      }
-    } catch (e) {
-      console.warn("deduplicateCharacters: failed to fetch remoteId", e);
-    }
-
+    // Process each duplicate – move entes/loadouts, then delete duplicate
     for (const dup of chars) {
       if (dup.id === keeper.id) continue;
 
-      if (remoteKeeperId && dup.remoteId && dup.remoteId !== remoteKeeperId) {
-        try {
-          // Fetch entes that belong to the duplicate's remote character
-          const { data: remoteEntes } = await supabase
-            .from("entes")
-            .select("id")
-            .eq("character_id", dup.remoteId);
-
-          if (remoteEntes && remoteEntes.length > 0) {
-            // Reassign them to the keeper
-            const { error: updateError } = await supabase
-              .from("entes")
-              .update({ character_id: remoteKeeperId })
-              .eq("character_id", dup.remoteId);
-
-            if (updateError) {
-              console.warn("Failed to move remote entes from duplicate to keeper:", updateError);
-            }
-          }
-
-          const { error: deleteError } = await supabase
-            .from("characters")
-            .delete()
-            .eq("id", dup.remoteId);
-
-          if (deleteError) {
-            console.warn("Failed to delete duplicate remote character:", deleteError);
-          }
-        } catch (e) {
-          console.warn("Error during remote duplicate cleanup:", e);
-        }
-      } else if (!remoteKeeperId && dup.remoteId) {
-        // Keeper has no remote row yet; keep the duplicate's remote row and assign it to keeper
-        await db.characters.update(keeper.id!, {
-          remoteId: dup.remoteId,
-          updatedAt: Date.now(),
-          isDirty: true,
-        });
-        remoteKeeperId = dup.remoteId; // now the keeper has a remote ID
-      }
-
-      // ----- Move local entes and loadouts -----
+      // ----- Move local entes -----
       const entes = await db.entes.where({ characterId: dup.id }).toArray();
       for (const ente of entes) {
         const existing = await db.entes
@@ -172,6 +97,7 @@ async function deduplicateCharacters() {
         }
       }
 
+      // ----- Move loadouts -----
       const loadouts = await db.loadouts.where({ characterId: dup.id }).toArray();
       for (const l of loadouts) {
         await db.loadouts.update(l.id!, {
@@ -181,14 +107,14 @@ async function deduplicateCharacters() {
         });
       }
 
-      // Delete duplicate's local inventory
+      // Delete duplicate's local inventory (keeper's inventory is kept)
       await db.inventory.where({ characterId: dup.id }).delete();
 
       // Delete duplicate local character
       await db.characters.delete(dup.id!);
     }
 
-    // After merging, mark keeper dirty to ensure a full push
+    // Mark keeper dirty so it gets pushed to remote
     await db.characters.update(keeper.id!, {
       updatedAt: Date.now(),
       isDirty: true,
@@ -746,174 +672,6 @@ export async function pullCharactersExport() {
   }
 }
 
-async function fetchOldUserRow(discordId: string) {
-  const candidates = ["user_data"];
-
-  for (const tableName of candidates) {
-    try {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select("*")
-        .eq("discord_id", discordId)
-        .single();
-
-      if (error) {
-        console.warn(
-          `fetchOldUserRow: no data from ${tableName}:`,
-          error.message ?? error
-        );
-        continue;
-      }
-
-      if (!data) return null;
-      return data;
-    } catch (e) {
-      console.warn(`fetchOldUserRow: fetch failed for ${tableName}:`, e);
-      continue;
-    }
-  }
-
-  return null;
-}
-
-async function migrateOldUserDataIfNeeded() {
-  const discordId = getDiscordId();
-  if (!discordId) return;
-
-  const user = await db.users.get(discordId);
-  if (user?.migratedFromBlob) return;
-
-  const oldRow = await fetchOldUserRow(discordId);
-  if (!oldRow) {
-    console.info(
-      "migrateOldUserDataIfNeeded: no old user row found, skipping migration"
-    );
-    return;
-  }
-
-  let raw = oldRow.data;
-  if (raw == null) {
-    console.info(
-      "migrateOldUserDataIfNeeded: old data is null/undefined, skipping"
-    );
-    return;
-  }
-
-  let parsed: any = null;
-
-  if (typeof raw === "object") {
-    parsed = raw;
-  } else if (typeof raw === "string") {
-    let s = raw.trim();
-
-    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-      s = s.slice(1, -1);
-    }
-
-    if (s.includes('""')) {
-      s = s.replace(/""/g, '"');
-    }
-
-    try {
-      parsed = JSON.parse(s);
-    } catch (err) {
-      console.warn(
-        "migrateOldUserDataIfNeeded: failed to parse old data after cleaning. Sample start:",
-        s.slice(0, 200)
-      );
-      return;
-    }
-  } else {
-    console.warn(
-      "migrateOldUserDataIfNeeded: unexpected old data type:",
-      typeof raw
-    );
-    return;
-  }
-
-  if (!parsed) {
-    console.warn("migrateOldUserDataIfNeeded: parsed is falsy, skipping");
-    return;
-  }
-
-  const localCharacters = await db.characters
-    .where("discordId")
-    .equals(discordId)
-    .toArray();
-
-  if (localCharacters.length === 0) {
-    console.info(
-      "migrateOldUserDataIfNeeded: no local characters to merge into, skipping"
-    );
-    await db.users.put({
-      discordId,
-      updatedAt: Date.now(),
-      isDirty: false,
-      migratedFromBlob: true,
-      remoteId: user?.remoteId,
-    });
-    return;
-  }
-
-  let targetChar = localCharacters[0];
-
-  if (localCharacters.length > 1 && parsed.name) {
-    const match = localCharacters.find(
-      (c) => c.charName.toLowerCase() === String(parsed.name).toLowerCase()
-    );
-    if (match) targetChar = match;
-  }
-
-  if (Array.isArray(parsed.entes)) {
-    for (const oldEnte of parsed.entes) {
-      if (!oldEnte?.id) continue;
-
-      const existing = await db.entes
-        .where("[characterId+enteID]")
-        .equals([targetChar.id!, oldEnte.id])
-        .first();
-
-      const next = {
-        amount: oldEnte.amount ?? 0,
-        unlockLevel: oldEnte.unlockLevel ?? 0,
-        notes: oldEnte.notes ?? "",
-        customImage: oldEnte.image ?? "",
-        favorite: oldEnte.favorite ?? false,
-        updatedAt: Date.now(),
-        isDirty: true,
-      };
-
-      if (existing) {
-        await db.entes.update(existing.id!, next);
-      } else {
-        await db.entes.add({
-          characterId: targetChar.id!,
-          enteID: oldEnte.id,
-          ...next,
-          order: oldEnte.order ?? Date.now(),
-          isDeleted: false,
-        });
-      }
-    }
-
-    await db.characters.update(targetChar.id!, {
-      charName: parsed.name ?? targetChar.charName,
-      isDirty: true,
-      updatedAt: Date.now(),
-    });
-  }
-
-  await db.users.put({
-    discordId,
-    updatedAt: Date.now(),
-    isDirty: false,
-    migratedFromBlob: true,
-    remoteId: user?.remoteId,
-  });
-
-  console.info("migrateOldUserDataIfNeeded: migration complete for", discordId);
-}
-
 /* =========================
    PULL NORMAL CHARACTERS
 ========================= */
@@ -1231,11 +989,8 @@ async function pullRemoteCharacters() {
 ========================= */
 
 export async function syncAll() {
-  // Clean up duplicate exported characters first
   await deduplicateCharacters();
-
   await pullCharactersExport();
   await pullRemoteCharacters();
-  await migrateOldUserDataIfNeeded();
   await pushLocalChanges();
 }
