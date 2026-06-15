@@ -617,6 +617,7 @@ export async function pullCharactersExport() {
           });
         }
       } else {
+        // New ente from export – set updatedAt to 0 so remote pull can fill metadata
         await db.entes.add({
           characterId: localChar!.id!,
           enteID: rawId,
@@ -626,8 +627,8 @@ export async function pullCharactersExport() {
           order: Date.now(),
           notes: "",
           customImage: "",
-          updatedAt: Date.now(),
-          isDirty: true,
+          updatedAt: 0,           // <-- forces remote pull to update with real metadata
+          isDirty: false,
         });
       }
     }
@@ -990,7 +991,7 @@ async function pullRemoteCharacters() {
 
 export async function syncAll() {
   await deduplicateCharacters();
-  await pullCharactersExport();
   await pullRemoteCharacters();
+  await pullCharactersExport();
   await pushLocalChanges();
 }
