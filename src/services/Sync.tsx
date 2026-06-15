@@ -47,7 +47,6 @@ async function deduplicateCharacters() {
     groups.get(c.externalId)!.push(c);
   }
 
-  // Process each externalId group
   for (const chars of groups.values()) {
     if (chars.length <= 1) continue;
 
@@ -55,14 +54,13 @@ async function deduplicateCharacters() {
     let keeper: Character | undefined =
       chars.find(c => c.discordId === currentDiscordId) ?? chars[0];
 
-    // Find the most recently updated character in the group
     for (const c of chars) {
       if ((c.updatedAt ?? 0) > (keeper?.updatedAt ?? 0)) {
         keeper = c;
       }
     }
 
-    if (!keeper) continue;   // should never happen
+    if (!keeper) continue;
 
     // Ensure keeper belongs to current user
     if (keeper.discordId !== currentDiscordId) {
@@ -73,11 +71,75 @@ async function deduplicateCharacters() {
       });
     }
 
-    // Process each duplicate
+    // Find the remote character row for the externalId (should be unique)
+    let remoteKeeperId: string | undefined;
+    try {
+      const { data: remoteChar } = await supabase
+        .from("characters")
+        .select("id")
+        .eq("external_id", keeper.externalId)
+        .single();
+
+      if (remoteChar?.id) {
+        remoteKeeperId = remoteChar.id;
+        // Update keeper's local remoteId if needed
+        if (keeper.remoteId !== remoteKeeperId) {
+          await db.characters.update(keeper.id!, {
+            remoteId: remoteKeeperId,
+            updatedAt: Date.now(),
+            isDirty: true,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("deduplicateCharacters: failed to fetch remoteId", e);
+    }
+
     for (const dup of chars) {
       if (dup.id === keeper.id) continue;
 
-      // Move entes from duplicate → keeper
+      if (remoteKeeperId && dup.remoteId && dup.remoteId !== remoteKeeperId) {
+        try {
+          // Fetch entes that belong to the duplicate's remote character
+          const { data: remoteEntes } = await supabase
+            .from("entes")
+            .select("id")
+            .eq("character_id", dup.remoteId);
+
+          if (remoteEntes && remoteEntes.length > 0) {
+            // Reassign them to the keeper
+            const { error: updateError } = await supabase
+              .from("entes")
+              .update({ character_id: remoteKeeperId })
+              .eq("character_id", dup.remoteId);
+
+            if (updateError) {
+              console.warn("Failed to move remote entes from duplicate to keeper:", updateError);
+            }
+          }
+
+          const { error: deleteError } = await supabase
+            .from("characters")
+            .delete()
+            .eq("id", dup.remoteId);
+
+          if (deleteError) {
+            console.warn("Failed to delete duplicate remote character:", deleteError);
+          }
+        } catch (e) {
+          console.warn("Error during remote duplicate cleanup:", e);
+        }
+      } else if (!remoteKeeperId && dup.remoteId) {
+        // Keeper has no remote row yet; keep the duplicate's remote row and assign it to keeper
+        await db.characters.update(keeper.id!, {
+          remoteId: dup.remoteId,
+          updatedAt: Date.now(),
+          isDirty: true,
+        });
+        remoteKeeperId = dup.remoteId; // now the keeper has a remote ID
+      }
+
+      // ----- Move local entes and loadouts -----
       const entes = await db.entes.where({ characterId: dup.id }).toArray();
       for (const ente of entes) {
         const existing = await db.entes
@@ -92,12 +154,24 @@ async function deduplicateCharacters() {
             isDirty: true,
           });
         } else {
-          // Already present — just delete the duplicate ente
+          // Merge notes/customImage if keeper's entry is empty
+          let shouldUpdate = false;
+          const updateData: any = { updatedAt: Date.now(), isDirty: true };
+          if (!existing.notes && ente.notes) {
+            updateData.notes = ente.notes;
+            shouldUpdate = true;
+          }
+          if (!existing.customImage && ente.customImage) {
+            updateData.customImage = ente.customImage;
+            shouldUpdate = true;
+          }
+          if (shouldUpdate) {
+            await db.entes.update(existing.id!, updateData);
+          }
           await db.entes.delete(ente.id!);
         }
       }
 
-      // Move loadouts
       const loadouts = await db.loadouts.where({ characterId: dup.id }).toArray();
       for (const l of loadouts) {
         await db.loadouts.update(l.id!, {
@@ -107,13 +181,18 @@ async function deduplicateCharacters() {
         });
       }
 
-      // Inventory is tightly coupled to a character; we keep the keeper's inventory.
-      // Duplicate's inventory (if any) is simply removed.
+      // Delete duplicate's local inventory
       await db.inventory.where({ characterId: dup.id }).delete();
 
-      // Finally remove the duplicate character
+      // Delete duplicate local character
       await db.characters.delete(dup.id!);
     }
+
+    // After merging, mark keeper dirty to ensure a full push
+    await db.characters.update(keeper.id!, {
+      updatedAt: Date.now(),
+      isDirty: true,
+    });
   }
 }
 
