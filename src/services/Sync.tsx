@@ -627,7 +627,7 @@ export async function pullCharactersExport() {
           order: Date.now(),
           notes: "",
           customImage: "",
-          updatedAt: 0,           // <-- forces remote pull to update with real metadata
+          updatedAt: 0,
           isDirty: false,
         });
       }
@@ -744,7 +744,7 @@ async function pullRemoteEntes() {
           amount: remote.amount,
           unlockLevel: remote.unlock_level,
           favorite: remote.favorite,
-          order: Date.now(),
+          order: typeof remote.order === "number" ? remote.order : Date.now(),
           notes: remote.notes ?? "",
           customImage: remote.custom_image ?? "",
           updatedAt: remoteTime,
