@@ -200,6 +200,9 @@ function WeaponSection({ loadout, weaponSources, onSave }: Props) {
                   <option value="Armas de Fuego">Armas de Fuego</option>
                   <option value="Instrumentos">Instrumentos</option>
                   <option value="Libros">Libros</option>
+                  <option value="Látigos">Látigos</option>
+                  <option value="Escudos">Escudos</option>
+                  <option value="Marionetas">Marionetas</option>
                 </select>
               </div>
             </div>
