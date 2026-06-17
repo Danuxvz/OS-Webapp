@@ -29,9 +29,11 @@ interface Props {
 
 function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail, onRandomizeDaruma }: Props) {
   const isMobile = useMediaQuery("(max-width: 768px)");
+
+  // Local state for editing
   const [amount, setAmount] = useState(ente.amount || 0);
   const [unlockLevel, setUnlockLevel] = useState(
-    ente.unlockLevel || computeUnlockLevel(amount)
+    ente.unlockLevel || computeUnlockLevel(ente.amount || 0)
   );
   const [notes, setNotes] = useState(ente.notes || "");
   const [customImage, setCustomImage] = useState(ente.customImage || "");
@@ -40,8 +42,19 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail,
     !!ente.notes || !!ente.customImage
   );
 
+  // 🔁 Reset local state when the ente prop changes (different character)
+  useEffect(() => {
+    setAmount(ente.amount || 0);
+    setUnlockLevel(ente.unlockLevel || computeUnlockLevel(ente.amount || 0));
+    setNotes(ente.notes || "");
+    setCustomImage(ente.customImage || "");
+    setFavorite(ente.favorite || false);
+    setShowExtras(!!ente.notes || !!ente.customImage);
+  }, [ente.id]);   // ente.id is the unique enteID
+
   const hasExtras = showExtras;
 
+  // Keep parent in sync when local state changes
   useEffect(() => {
     onUpdate({
       ...ente,
@@ -69,7 +82,6 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail,
   const isDaruma = /^E123[A-J]$/i.test(ente.id);
   const canRandomize = isDaruma && (amount ?? 0) >= 2;
 
-  // Only render the button for Daruma entes
   const darumaButton = (onRandomizeDaruma && isDaruma) ? (
     <button
       className="ente-daruma-btn"
@@ -110,7 +122,6 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail,
     </>
   );
 
-  // thumbnail only shown if hideThumbnail is false
   const thumbnail = !hideThumbnail ? (
     <div className="ente-thumb-wrap" onClick={handleCustomImage}>
       {ente.image ? (
