@@ -1,5 +1,5 @@
 // CharacterDetails.tsx
-import { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import type { MouseEvent } from "react";
 import type { Character } from "../characters/database/db";
 import { characterManager } from "../characters/CharacterManager";
@@ -13,51 +13,46 @@ interface Props {
 
 type StatKey = "hp" | "atk" | "slots";
 
-function CharacterDetails({ character, isActive, onSelect }: Props) {
+const CharacterDetails = React.memo(function CharacterDetails({
+  character,
+  isActive,
+  onSelect,
+}: Props) {
+  // -- local editing state (reset when character changes) --
   const [localChar, setLocalChar] = useState<Character>(character);
-  const [openBreakdown, setOpenBreakdown] = useState<StatKey | null>(null);
   const [nameDraft, setNameDraft] = useState(character.charName || "");
+  const [openBreakdown, setOpenBreakdown] = useState<StatKey | null>(null);
 
   const updateTimerRef = useRef<number | null>(null);
   const nameDebounceRef = useRef<number | null>(null);
-  const lastFetchIdRef = useRef(0);
   const localCharRef = useRef<Character>(character);
 
+  // Keep a ref to the latest localChar so event handler always sees current value
   useEffect(() => {
     localCharRef.current = localChar;
   }, [localChar]);
 
-  // Refresh character data when becoming active
+  // When the character prop changes, immediately update all local state
   useEffect(() => {
-    if (!isActive) return;
-
-    let cancelled = false;
-    const fetchData = async () => {
-      const fresh = await characterManager.getCharacter(character.id!);
-      if (!cancelled && fresh) {
-        setLocalChar(fresh);
-        setNameDraft(fresh.charName || "");
-      }
-    };
-    fetchData();
-    return () => { cancelled = true; };
-  }, [isActive, character.id]);
+    setLocalChar(character);
+    setNameDraft(character.charName || "");
+    setOpenBreakdown(null);
+  }, [character]);
 
   /* =========================
      EVENT LISTENER (only when active)
   ========================= */
   useEffect(() => {
-    if (!isActive) return;          // ← ignore events while collapsed
+    if (!isActive) return;
 
     let mounted = true;
 
-    const handler = (updatedChar: Character | any) => {
-      if (!updatedChar) return;
+    const handler = (_updatedChar: Character | any) => {
+      if (!_updatedChar) return;
 
       const matches =
-        updatedChar.id === character.id ||
-        updatedChar.characterId === character.id;
-
+        _updatedChar.id === character.id ||
+        _updatedChar.characterId === character.id;
       if (!matches) return;
 
       if (updateTimerRef.current) {
@@ -66,14 +61,14 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
       }
 
       updateTimerRef.current = window.setTimeout(async () => {
-        const fetchId = ++lastFetchIdRef.current;
+        if (!mounted) return;
 
         try {
           const fresh = await characterManager.getCharacter(character.id!);
-          if (!mounted || fetchId !== lastFetchIdRef.current || !fresh) return;
+          if (!mounted || !fresh) return;
 
+          // Only update if something actually changed
           const current = localCharRef.current;
-
           const isDifferent =
             fresh.updatedAt !== current.updatedAt ||
             JSON.stringify(fresh.bonusLog) !== JSON.stringify(current.bonusLog) ||
@@ -87,7 +82,7 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
             setLocalChar(fresh);
           }
         } catch (error) {
-          // ignore
+          // ignore transient fetch errors
         } finally {
           updateTimerRef.current = null;
         }
@@ -107,7 +102,7 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
         updateTimerRef.current = null;
       }
     };
-  }, [isActive, character.id]);   // re‑subscribe when isActive changes
+  }, [isActive, character.id]);
 
   /* =========================
      FIELD UPDATE
@@ -131,7 +126,6 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
       const fresh = await characterManager.updateCharacter(character.id!, {
         charName: value,
       });
-
       if (fresh) setLocalChar(fresh);
     }, 500);
   }
@@ -142,13 +136,12 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
     // Optimistic UI update
     setLocalChar({ ...localChar, tempStatBonus: updatedTemp });
 
-    // Update DB and recalculate bonuses
     await characterManager.updateCharacter(character.id!, {
       tempStatBonus: updatedTemp,
     });
     await characterManager.recalculateCharacterBonuses(character.id!);
 
-    // Fetch the final state to be sure
+    // Fetch the final calculated state
     const fresh = await characterManager.getCharacter(character.id!);
     if (fresh) setLocalChar(fresh);
   }
@@ -165,33 +158,21 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
 
   const totalStats = useMemo(() => {
     return {
-      hp:
-        localChar.baseStats.hp +
-        sumBonus("hp") +
-        localChar.tempStatBonus.hp,
-
-      atk:
-        localChar.baseStats.atk +
-        sumBonus("atk") +
-        localChar.tempStatBonus.atk,
-
-      slots:
-        localChar.baseStats.slots +
-        sumBonus("slots") +
-        localChar.tempStatBonus.slots,
+      hp: localChar.baseStats.hp + sumBonus("hp") + localChar.tempStatBonus.hp,
+      atk: localChar.baseStats.atk + sumBonus("atk") + localChar.tempStatBonus.atk,
+      slots: localChar.baseStats.slots + sumBonus("slots") + localChar.tempStatBonus.slots,
     };
   }, [localChar]);
 
   /* =========================
      Delete Character
-  ======================== */
+  ========================= */
   async function handleDelete(e: MouseEvent) {
     e.stopPropagation();
 
     const confirmed = confirm(
       `Delete "${localChar.charName || "Unnamed Character"}"?`
     );
-
     if (!confirmed) return;
 
     if (nameDebounceRef.current) {
@@ -202,13 +183,6 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
     await deleteRemoteCharacter(localChar.id!);
     await characterManager.deleteCharacter(character.id!);
   }
-
-  /* =========================
-     Sync draft name when character changes
-  ========================= */
-  useEffect(() => {
-    setNameDraft(localChar.charName || "");
-  }, [localChar.charName, localChar.id]);
 
   /* =========================
      RENDER
@@ -323,6 +297,6 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
       </div>
     </div>
   );
-}
+});
 
 export default CharacterDetails;

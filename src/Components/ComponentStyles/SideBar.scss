@@ -255,7 +255,8 @@ body:not(.sidebar-hidden) .main {
 .character-body {
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease;
+  // transition: max-height 0.3s ease;
+  transition: opacity 120ms ease, transform 120ms ease, max-height 120ms ease;
 }
 
 .character-body.expanded {
@@ -397,5 +398,4 @@ body:not(.sidebar-hidden) .main {
     padding: 4px !important;
   }
 }
-
 
