@@ -18,7 +18,7 @@ function CharacterSheet({ activeSection, characterId }: CharacterSheetProps) {
 				)}
 
 				{activeSection === "entes" && (
-					<EntesSection characterId={characterId} />
+					<EntesSection key={characterId ?? "none"} characterId={characterId} />
 				)}
 
 				{activeSection === "inventario" && (

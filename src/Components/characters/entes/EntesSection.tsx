@@ -26,8 +26,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const loadIdRef = useRef(0);
   const pendingLoadingTimerRef = useRef<number | null>(null);
   const suppressReloadRef = useRef(0);
-  const isLoadingRef = useRef(false);
-  const needsReloadRef = useRef(false);
   const mountedRef = useRef(true);
 
   function computeUnlockLevel(amount: number) {
@@ -60,17 +58,10 @@ function EntesSection({ characterId }: EntesSectionProps) {
       return;
     }
 
+    // Invalidate any previous pending load
     const thisLoadId = ++loadIdRef.current;
 
-    if (isLoadingRef.current) {
-      if (window.innerWidth <= 768) return;
-      needsReloadRef.current = true;
-      return;
-    }
-
-    isLoadingRef.current = true;
-    needsReloadRef.current = false;
-
+    // Show loading indicator after 800ms
     if (pendingLoadingTimerRef.current) {
       window.clearTimeout(pendingLoadingTimerRef.current);
       pendingLoadingTimerRef.current = null;
@@ -149,13 +140,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
     } catch (err) {
       console.warn("loadEntes error", err);
     } finally {
-      isLoadingRef.current = false;
-
-      if (window.innerWidth > 768 && needsReloadRef.current && mountedRef.current) {
-        needsReloadRef.current = false;
-        setTimeout(() => loadEntes(), 50);
-      }
-
       if (pendingLoadingTimerRef.current) {
         window.clearTimeout(pendingLoadingTimerRef.current);
         pendingLoadingTimerRef.current = null;
@@ -166,13 +150,15 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
   }
 
+  // 🔁 Reset everything when character changes
   useEffect(() => {
     mountedRef.current = true;
+    // Immediately clear stale data so the old list doesn't flash
+    setEntes([]);
+    setExpandedId(null);
+    setDraggedId(null);
 
-    if (!characterId) {
-      setEntes([]);
-      return;
-    }
+    if (!characterId) return;
 
     loadEntes();
 
@@ -192,6 +178,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
       characterManager.off("enteUpdated", handler);
       characterManager.off("bonusUpdated", handler);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterId]);
 
   async function updateEnte(updated: Ente) {
@@ -414,7 +401,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
         {viewMode === "gallery" ? (
           <div className="gallery-grid">
             {filteredAndSorted.map((ente) => (
-              <Fragment key={`${characterId}-${ente.id}`}>
+              <Fragment key={ente.id}>
                 <div
                   className={`gallery-card ${expandedId === ente.id ? "expanded" : ""}`}
                   draggable={sortBy === "order"}
@@ -502,7 +489,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
             ) : (
               filteredAndSorted.map((ente) => (
                 <li
-                  key={`${characterId}-${ente.id}`}   // unique per character
+                  key={ente.id}
                   draggable={sortBy === "order"}
                   onDragStart={(e) => {
                     if (sortBy !== "order") return;
