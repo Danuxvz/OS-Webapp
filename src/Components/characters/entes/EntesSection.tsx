@@ -448,6 +448,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
                   <div className="gallery-detail">
                     <EnteCard
                       ente={ente}
+                      characterId={characterId!}
                       onUpdate={updateEnte}
                       onDelete={async (id) => {
                         try {
@@ -520,6 +521,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
                 >
                   <EnteCard
                     ente={ente}
+                    characterId={characterId!}
                     onUpdate={updateEnte}
                     onDelete={async (id) => {
                       try {

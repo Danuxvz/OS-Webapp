@@ -20,6 +20,7 @@ function useMediaQuery(query: string): boolean {
 
 interface Props {
   ente: Ente;
+  characterId: number;          // new prop – allows reset on character switch
   onUpdate: (ente: Ente) => void;
   onDelete: (id: string) => void;
   computeUnlockLevel: (amount: number) => number;
@@ -27,7 +28,15 @@ interface Props {
   onRandomizeDaruma?: (enteId: string) => void;
 }
 
-function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail, onRandomizeDaruma }: Props) {
+function EnteCard({
+  ente,
+  characterId,
+  onUpdate,
+  onDelete,
+  computeUnlockLevel,
+  hideThumbnail,
+  onRandomizeDaruma,
+}: Props) {
   const isMobile = useMediaQuery("(max-width: 768px)");
 
   // Local state for editing
@@ -42,7 +51,7 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail,
     !!ente.notes || !!ente.customImage
   );
 
-  // 🔁 Reset local state when the ente prop changes (different character)
+  // 🔁 Reset local state whenever the character or the ente ID changes
   useEffect(() => {
     setAmount(ente.amount || 0);
     setUnlockLevel(ente.unlockLevel || computeUnlockLevel(ente.amount || 0));
@@ -50,7 +59,7 @@ function EnteCard({ ente, onUpdate, onDelete, computeUnlockLevel, hideThumbnail,
     setCustomImage(ente.customImage || "");
     setFavorite(ente.favorite || false);
     setShowExtras(!!ente.notes || !!ente.customImage);
-  }, [ente.id]);   // ente.id is the unique enteID
+  }, [characterId, ente.id]);
 
   const hasExtras = showExtras;
 
