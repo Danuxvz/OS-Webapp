@@ -18,7 +18,6 @@ const CharacterDetails = React.memo(function CharacterDetails({
   isActive,
   onSelect,
 }: Props) {
-  // -- local editing state (reset when character changes) --
   const [localChar, setLocalChar] = useState<Character>(character);
   const [nameDraft, setNameDraft] = useState(character.charName || "");
   const [openBreakdown, setOpenBreakdown] = useState<StatKey | null>(null);
@@ -27,17 +26,16 @@ const CharacterDetails = React.memo(function CharacterDetails({
   const nameDebounceRef = useRef<number | null>(null);
   const localCharRef = useRef<Character>(character);
 
-  // Keep a ref to the latest localChar so event handler always sees current value
   useEffect(() => {
     localCharRef.current = localChar;
   }, [localChar]);
 
-  // When the character prop changes, immediately update all local state
+  // 🔁 Only reset when the character identity or key fields change
   useEffect(() => {
     setLocalChar(character);
     setNameDraft(character.charName || "");
     setOpenBreakdown(null);
-  }, [character]);
+  }, [character.id, character.updatedAt, character.charName, character.charImage]);
 
   /* =========================
      EVENT LISTENER (only when active)
@@ -67,7 +65,6 @@ const CharacterDetails = React.memo(function CharacterDetails({
           const fresh = await characterManager.getCharacter(character.id!);
           if (!mounted || !fresh) return;
 
-          // Only update if something actually changed
           const current = localCharRef.current;
           const isDifferent =
             fresh.updatedAt !== current.updatedAt ||
