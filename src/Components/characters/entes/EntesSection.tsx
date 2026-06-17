@@ -414,7 +414,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
         {viewMode === "gallery" ? (
           <div className="gallery-grid">
             {filteredAndSorted.map((ente) => (
-              <Fragment key={ente.id}>
+              <Fragment key={`${characterId}-${ente.id}`}>
                 <div
                   className={`gallery-card ${expandedId === ente.id ? "expanded" : ""}`}
                   draggable={sortBy === "order"}
@@ -501,7 +501,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
             ) : (
               filteredAndSorted.map((ente) => (
                 <li
-                  key={ente.id}
+                  key={`${characterId}-${ente.id}`}   // unique per character
                   draggable={sortBy === "order"}
                   onDragStart={(e) => {
                     if (sortBy !== "order") return;
