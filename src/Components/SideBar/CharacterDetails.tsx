@@ -27,23 +27,30 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
     localCharRef.current = localChar;
   }, [localChar]);
 
-  /* =========================
-     INITIAL SYNC + EVENT SUBSCRIPTION
-  ========================= */
+  // Refresh character data when becoming active
   useEffect(() => {
-    let mounted = true;
+    if (!isActive) return;
 
-    async function init() {
+    let cancelled = false;
+    const fetchData = async () => {
       const fresh = await characterManager.getCharacter(character.id!);
-      if (mounted && fresh) {
+      if (!cancelled && fresh) {
         setLocalChar(fresh);
         setNameDraft(fresh.charName || "");
       }
-    }
+    };
+    fetchData();
+    return () => { cancelled = true; };
+  }, [isActive, character.id]);
 
-    init();
+  /* =========================
+     EVENT LISTENER (only when active)
+  ========================= */
+  useEffect(() => {
+    if (!isActive) return;          // ← ignore events while collapsed
 
-    // Debounced handler for manager updates
+    let mounted = true;
+
     const handler = (updatedChar: Character | any) => {
       if (!updatedChar) return;
 
@@ -53,13 +60,11 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
 
       if (!matches) return;
 
-      // Clear any pending timer from previous rapid updates
       if (updateTimerRef.current) {
         window.clearTimeout(updateTimerRef.current);
         updateTimerRef.current = null;
       }
 
-      // Schedule a single refresh after 250ms of inactivity
       updateTimerRef.current = window.setTimeout(async () => {
         const fetchId = ++lastFetchIdRef.current;
 
@@ -82,7 +87,7 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
             setLocalChar(fresh);
           }
         } catch (error) {
-          // Intentionally ignore refresh errors here
+          // ignore
         } finally {
           updateTimerRef.current = null;
         }
@@ -101,13 +106,8 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
         window.clearTimeout(updateTimerRef.current);
         updateTimerRef.current = null;
       }
-
-      if (nameDebounceRef.current) {
-        window.clearTimeout(nameDebounceRef.current);
-        nameDebounceRef.current = null;
-      }
     };
-  }, [character.id]);
+  }, [isActive, character.id]);   // re‑subscribe when isActive changes
 
   /* =========================
      FIELD UPDATE
@@ -148,7 +148,7 @@ function CharacterDetails({ character, isActive, onSelect }: Props) {
     });
     await characterManager.recalculateCharacterBonuses(character.id!);
 
-    // Fetch the final state to be sure (the debounced handler will also catch it)
+    // Fetch the final state to be sure
     const fresh = await characterManager.getCharacter(character.id!);
     if (fresh) setLocalChar(fresh);
   }
