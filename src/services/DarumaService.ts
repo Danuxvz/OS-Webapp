@@ -54,7 +54,7 @@ async function countDarumaUses(characterCode: string, sourceEnte: string) {
 }
 
 export async function randomizeDarumaForCharacter(
-  characterId: number,       // local Dexie character ID
+  characterId: number,
   sourceEnteID: string
 ) {
   const character = await db.characters.get(characterId);
@@ -94,7 +94,24 @@ export async function randomizeDarumaForCharacter(
   // Perform the local swap via CharacterManager
   await characterManager.randomizeDaruma(characterId, sourceEnteID, targetEnteID);
 
-  // ✅ Use the Supabase remote ID, not the local Dexie ID
+  // When the target doesn't exist, the old source ID disappears completely.
+  // We need to soft‑delete it so that remote records are marked as deleted.
+  if (!target) {
+    await db.entes.add({
+      characterId,
+      enteID: sourceEnteID,
+      amount: 0,
+      unlockLevel: 0,
+      favorite: false,
+      order: Date.now(),
+      notes: "",
+      customImage: "",
+      updatedAt: now,
+      isDirty: true,
+      isDeleted: true,
+    });
+  }
+
   const supabaseCharacterId = character.remoteId;
 
   // Enqueue the bot task
