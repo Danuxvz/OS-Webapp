@@ -14,16 +14,19 @@ function Main() {
 
   useEffect(() => {
     async function bootstrap() {
-      const user = await initSupabaseAuth();
+      try {
+        const user = await initSupabaseAuth();
 
-      if (user) {
-        console
-        const id = user.user_metadata?.provider_id || user.id;
-        setDiscordId(id);
-        await syncAll();
+        if (user) {
+          const id = user.user_metadata?.provider_id || user.id;
+          setDiscordId(id);
+          await syncAll();
+        }
+      } catch (err) {
+        console.error("Bootstrap failed:", err);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     }
 
     bootstrap();
