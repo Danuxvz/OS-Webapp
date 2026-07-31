@@ -542,6 +542,15 @@
   .grid-slot .copy-slot-btn {
     opacity: 1;
   }
+
+  .gallery-grid {
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    gap: 8px;
+  }
+
+  .gallery-card {
+    padding: 4px;
+  }
 }
 
 /* ============================
@@ -574,15 +583,15 @@
    GALLERY GRID
 ============================ */
 .gallery-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 10px;
   align-content: flex-start;
 }
 
 /* Mini gallery card */
 .gallery-card {
-  width: 120px;
+  width: 100%;
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 8px;

@@ -5,13 +5,26 @@ import SectionNav from './Components/SectionNav.tsx'
 import CharacterSheet from './Components/characters/CharacterSheet.tsx'
 import { characterManager } from './Components/characters/CharacterManager.tsx' 
 import type { Character } from './Components/characters/database/db.ts'
-import { preloadMetadata } from './services/enteMetadataService.ts'
+import { preloadMetadata, refreshMetadataIfChanged } from './services/enteMetadataService.ts'
 
 function App({ discordId }: { discordId: string | null }) {
 	const [characters, setCharacters] = useState<Character[]>([])
 	const [activeCharacterId, setActiveCharacterId] = useState<number | null>(null)
 	const [sidebarHidden, setSidebarHidden] = useState(false)
 	const [activeSection, setActiveSection] = useState<"loadout" | "entes" | "inventario">("entes")
+	const [metadataVersion, setMetadataVersion] = useState(0)
+
+	// On every page load, re-fetch ente metadata from the sheets (bypassing
+	// the localStorage cache). If it actually changed, bump metadataVersion
+	// so the entes list remounts and picks up the new data — this runs in
+	// parallel with character loading below, not blocking first paint.
+	useEffect(() => {
+		refreshMetadataIfChanged()
+			.then((changed) => {
+				if (changed) setMetadataVersion((v) => v + 1);
+			})
+			.catch((err) => console.warn("Failed to refresh ente metadata:", err));
+	}, []);
 
 	// Persist activeCharacterId to localStorage whenever it changes
 	useEffect(() => {
@@ -121,6 +134,7 @@ function App({ discordId }: { discordId: string | null }) {
 								<CharacterSheet
 									activeSection={activeSection}
 									characterId={activeCharacterId}
+									metadataVersion={metadataVersion}
 								/>
 							</div>
 						</div>

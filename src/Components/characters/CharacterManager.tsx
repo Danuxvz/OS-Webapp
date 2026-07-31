@@ -2,6 +2,7 @@
 import { db } from "./database/db";
 import type { Character, CharacterEnte } from "./database/db";
 import { StatBonusEngine } from "./entes/StatBonus";
+import "./entes/SpecialEntes";
 import { getEnteMetadata } from "../../services/enteMetadataService";
 import { triggerAutoSync } from "../../services/SyncScheduler";
 
@@ -402,7 +403,7 @@ class CharacterManager {
         ente.enteID,
         metadata.SB ?? "",
         ente.unlockLevel,
-        character
+        { character, entes }
       );
     }
 

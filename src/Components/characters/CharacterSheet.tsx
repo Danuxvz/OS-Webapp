@@ -7,9 +7,10 @@ import "./CharacterSheetStyles/CharacterSheet.scss";
 interface CharacterSheetProps {
 	activeSection: "entes" | "inventario" | "loadout";
 	characterId: number | null;
+	metadataVersion?: number;
 }
 
-function CharacterSheet({ activeSection, characterId }: CharacterSheetProps) {
+function CharacterSheet({ activeSection, characterId, metadataVersion = 0 }: CharacterSheetProps) {
 	return (
 		<div className="character-sheet">
 			<div className="section">
@@ -18,7 +19,7 @@ function CharacterSheet({ activeSection, characterId }: CharacterSheetProps) {
 				)}
 
 				{activeSection === "entes" && (
-					<EntesSection key={characterId ?? "none"} characterId={characterId} />
+					<EntesSection key={`${characterId ?? "none"}-${metadataVersion}`} characterId={characterId} />
 				)}
 
 				{activeSection === "inventario" && (

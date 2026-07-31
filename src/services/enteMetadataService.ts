@@ -145,7 +145,17 @@ function resolveParentId(id: string, rank: string): string | null {
    BUILD FULL INDEX
 ========================= */
 
+let buildPromise: Promise<Record<string, EnteMetadata>> | null = null;
+
 async function buildMetadataIndex(): Promise<Record<string, EnteMetadata>> {
+  if (buildPromise) return buildPromise;
+  buildPromise = _buildMetadataIndexInner().finally(() => {
+    buildPromise = null;
+  });
+  return buildPromise;
+}
+
+async function _buildMetadataIndexInner(): Promise<Record<string, EnteMetadata>> {
 
   // 1️⃣ Try localStorage first
   const cached = localStorage.getItem(LOCAL_CACHE_KEY);
@@ -340,6 +350,19 @@ export async function refreshMetadata() {
   localStorage.removeItem(LOCAL_CACHE_KEY);
   metadataIndex = null;
   await buildMetadataIndex();
+}
+
+/**
+ * Re-fetches metadata from the sheets (bypassing the localStorage cache)
+ * and reports whether the result differs from what was previously cached.
+ * Call this on app startup so sheet edits get picked up without the user
+ * having to manually clear anything.
+ */
+export async function refreshMetadataIfChanged(): Promise<boolean> {
+  const previousRaw = localStorage.getItem(LOCAL_CACHE_KEY);
+  await refreshMetadata();
+  const freshRaw = localStorage.getItem(LOCAL_CACHE_KEY);
+  return previousRaw !== freshRaw;
 }
 
 export async function preloadMetadata() {
