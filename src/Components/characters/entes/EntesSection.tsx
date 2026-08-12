@@ -28,6 +28,10 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const suppressReloadRef = useRef(0);
   const mountedRef = useRef(true);
 
+  // ----- Load lock to prevent infinite loops on mobile with many entes -----
+  const isLoadingRef = useRef(false);
+  const needsReloadRef = useRef(false);
+
   function computeUnlockLevel(amount: number) {
     if (amount >= 5) return 4;
     if (amount === 4) return 3;
@@ -58,10 +62,17 @@ function EntesSection({ characterId }: EntesSectionProps) {
       return;
     }
 
-    // Invalidate any previous pending load
+    // Prevent concurrent loads – queue a retry if one is already running
+    if (isLoadingRef.current) {
+      needsReloadRef.current = true;
+      return;
+    }
+
+    isLoadingRef.current = true;
+    needsReloadRef.current = false;
+
     const thisLoadId = ++loadIdRef.current;
 
-    // Show loading indicator after 800ms
     if (pendingLoadingTimerRef.current) {
       window.clearTimeout(pendingLoadingTimerRef.current);
       pendingLoadingTimerRef.current = null;
@@ -140,12 +151,20 @@ function EntesSection({ characterId }: EntesSectionProps) {
     } catch (err) {
       console.warn("loadEntes error", err);
     } finally {
+      isLoadingRef.current = false;
+
       if (pendingLoadingTimerRef.current) {
         window.clearTimeout(pendingLoadingTimerRef.current);
         pendingLoadingTimerRef.current = null;
       }
       if (thisLoadId === loadIdRef.current && mountedRef.current) {
         setLoading(false);
+      }
+
+      // If a reload was requested while we were busy, do it now
+      if (needsReloadRef.current && mountedRef.current) {
+        needsReloadRef.current = false;
+        setTimeout(() => loadEntes(), 0);
       }
     }
   }
@@ -157,6 +176,10 @@ function EntesSection({ characterId }: EntesSectionProps) {
     setEntes([]);
     setExpandedId(null);
     setDraggedId(null);
+
+    // Cancel any in‑progress load for the previous character
+    isLoadingRef.current = false;
+    needsReloadRef.current = false;
 
     if (!characterId) return;
 
