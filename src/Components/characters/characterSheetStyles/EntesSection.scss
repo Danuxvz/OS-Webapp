@@ -656,8 +656,8 @@
 
 /* Expanded detail row */
 .gallery-detail {
+  grid-column: 1 / -1;
   width: 100%;
-  flex-basis: 100%;
   background: #161616;
   border: 1px solid #2b2b2b;
   border-radius: 8px;
