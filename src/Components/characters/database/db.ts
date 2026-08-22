@@ -389,26 +389,38 @@ class OpenSourceDB extends Dexie {
       // Existing characters will have tabId undefined (main/npc auto-classified).
     });
 
-    // Version 12 – fix tabs table to have unique primary key and deduplicate
+    // Version 12 – add remoteId to tabs schema (required for queries)
     this.version(12).stores({
-      tabs: `&id, order`          // unique primary key on id
+      tabs: `
+        id,
+        remoteId,
+        order
+      `
     }).upgrade(async (tx) => {
       const allTabs = await tx.table("tabs").toArray();
-      const seen = new Map<string, any>();
-
-      // Keep first occurrence of each name, remove duplicates
-      const toDelete: any[] = [];
       for (const tab of allTabs) {
-        const key = tab.name?.toLowerCase().trim();
-        if (key && seen.has(key)) {
-          toDelete.push(tab.id);
-        } else if (key) {
-          seen.set(key, tab);
+        if (!("remoteId" in tab)) {
+          tab.remoteId = undefined;
+          await tx.table("tabs").put(tab);
         }
       }
+    });
 
-      for (const id of toDelete) {
-        await tx.table("tabs").delete(id);
+    // Version 13 – add isDeleted to tabs
+    this.version(13).stores({
+      tabs: `
+        id,
+        remoteId,
+        order,
+        isDeleted
+      `
+    }).upgrade(async (tx) => {
+      const allTabs = await tx.table("tabs").toArray();
+      for (const tab of allTabs) {
+        if (tab.isDeleted === undefined) {
+          tab.isDeleted = false;
+          await tx.table("tabs").put(tab);
+        }
       }
     });
   }

@@ -1,10 +1,12 @@
 import { db } from "../database/db";
 import type { Loadout } from "../../../types";
 import type { DBLoadout } from "../database/db";
+import { triggerAutoSync } from "../../../services/SyncScheduler.ts";
 
 function dbToUI(row: DBLoadout): Loadout {
   return {
     id: String(row.id),
+    remoteId: row.remoteId,
     characterId: row.characterId,
     name: row.name,
     data: row.data,
@@ -14,6 +16,7 @@ function dbToUI(row: DBLoadout): Loadout {
 function uiToDB(loadout: Loadout): DBLoadout {
   return {
     id: loadout.id ? Number(loadout.id) : undefined,
+    remoteId: loadout.remoteId,
     characterId: loadout.characterId,
     name: loadout.name,
     data: loadout.data,
@@ -37,11 +40,12 @@ export const loadoutManager = {
   async create(loadout: Loadout): Promise<Loadout> {
     const id = await db.loadouts.add(uiToDB(loadout));
 
-    // Mark the character dirty so pushLocalChanges picks up the new loadout
     await db.characters.update(loadout.characterId, {
       isDirty: true,
       updatedAt: Date.now(),
     });
+
+    triggerAutoSync();
 
     return { ...loadout, id: String(id) };
   },
@@ -50,16 +54,20 @@ export const loadoutManager = {
     const existing = await db.loadouts.get(Number(loadout.id));
     if (!existing) return;
 
-    await db.loadouts.put({
+    const toSave: DBLoadout = {
       ...existing,
       ...uiToDB(loadout),
-    });
+      remoteId: loadout.remoteId ?? existing.remoteId,
+    };
 
-    // Mark the character dirty so changes sync to other browsers
+    await db.loadouts.put(toSave);
+
     await db.characters.update(loadout.characterId, {
       isDirty: true,
       updatedAt: Date.now(),
     });
+
+    triggerAutoSync();
   },
 
   async delete(loadoutId: string): Promise<void> {
@@ -72,6 +80,8 @@ export const loadoutManager = {
       isDirty: true,
       updatedAt: Date.now(),
     });
+
+    triggerAutoSync();
   },
 
   async markLoadoutDeleted(loadoutId: string): Promise<void> {
@@ -89,5 +99,7 @@ export const loadoutManager = {
       isDirty: true,
       updatedAt: Date.now(),
     });
+
+    triggerAutoSync();
   },
 };
