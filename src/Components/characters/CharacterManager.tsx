@@ -441,7 +441,7 @@ class CharacterManager {
   ========================= */
 
   async getTabs(): Promise<Tab[]> {
-    return db.tabs.orderBy("order").toArray();
+    return db.tabs.orderBy("order").filter((t) => !t.isDeleted).toArray();
   }
 
   async createTab(name: string): Promise<string> {
@@ -452,15 +452,24 @@ class CharacterManager {
       name,
       order: count,
     });
+    triggerAutoSync();
     return id;
   }
 
   async deleteTab(tabId: string): Promise<void> {
     const chars = await db.characters.where("tabId").equals(tabId).toArray();
     for (const c of chars) {
-      await db.characters.update(c.id!, { tabId: undefined });
+      await db.characters.update(c.id!, {
+        tabId: undefined,
+        updatedAt: Date.now(),
+        isDirty: true,
+      });
     }
-    await db.tabs.delete(tabId);
+    // Soft-delete: a tab with a remoteId needs its remote row deleted too,
+    // which pushTabs() handles on the next sync. Deleting the local row
+    // immediately just meant the next pull brought it right back.
+    await db.tabs.update(tabId, { isDeleted: true });
+    triggerAutoSync();
   }
 
   async updateCharacterTab(characterId: number, tabId: string | null): Promise<void> {
@@ -469,6 +478,7 @@ class CharacterManager {
       updatedAt: Date.now(),
       isDirty: true,
     });
+    triggerAutoSync();
   }
 }
 

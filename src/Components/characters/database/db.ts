@@ -126,6 +126,7 @@ export interface Tab {
   remoteId?: string;
   name: string;
   order: number;
+  isDeleted?: boolean;
 }
 
 /* =========================

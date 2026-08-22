@@ -1,4 +1,4 @@
-import { pushLocalChanges } from "./Sync";
+import { pushLocalChanges, pushTabs } from "./Sync";
 
 
 
@@ -19,6 +19,7 @@ export function triggerAutoSync() {
 
 	try {
 	  console.log("Auto-sync triggered");
+	  await pushTabs();
 	  await pushLocalChanges();
 	} catch (err) {
 	  console.error("Auto-sync failed:", err);

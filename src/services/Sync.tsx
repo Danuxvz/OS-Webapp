@@ -159,13 +159,32 @@ async function pullTabs() {
   }
 }
 
-async function pushTabs() {
+export async function pushTabs() {
   const discordId = getDiscordId();
   if (!discordId) return;
 
   const localTabs = await db.tabs.toArray();
 
-  for (const local of localTabs) {
+  // Deleted tabs: remove the remote row first (if it ever existed), then
+  // drop the local row. Previously this only ever deleted locally, so the
+  // next pull would just bring the tab right back.
+  const deleted = localTabs.filter((t) => t.isDeleted);
+  for (const local of deleted) {
+    if (local.remoteId) {
+      const { error } = await supabase
+        .from("user_tabs")
+        .delete()
+        .eq("id", local.remoteId);
+      if (error) {
+        console.warn("pushTabs: failed to delete remote tab", local.name, error);
+        continue; // keep the local soft-delete marker, retry next sync
+      }
+    }
+    await db.tabs.delete(local.id!);
+  }
+
+  const active = localTabs.filter((t) => !t.isDeleted);
+  for (const local of active) {
     if (local.remoteId) {
       await supabase
         .from("user_tabs")
@@ -176,13 +195,16 @@ async function pushTabs() {
         })
         .eq("id", local.remoteId);
     } else {
+      // Upsert by (discord_id, name) instead of a blind insert: if this
+      // same tab was already created and pushed from another browser
+      // before this one had a chance to pull, this converges to the same
+      // remote row instead of creating a duplicate.
       const { data, error } = await supabase
         .from("user_tabs")
-        .insert({
-          discord_id: discordId,
-          name: local.name,
-          order: local.order,
-        })
+        .upsert(
+          { discord_id: discordId, name: local.name, order: local.order },
+          { onConflict: "discord_id,name" }
+        )
         .select()
         .single();
 
@@ -190,6 +212,8 @@ async function pushTabs() {
         await db.tabs.update(local.id!, {
           remoteId: data.id,
         });
+      } else if (error) {
+        console.warn("pushTabs: failed to create remote tab", local.name, error);
       }
     }
   }
@@ -221,6 +245,18 @@ export async function pushLocalChanges() {
         updated_at: new Date(char.updatedAt).toISOString(),
         source: char.source ?? "web",
       };
+
+      // Tabs are pushed earlier in syncAll(), so by now the referenced tab
+      // should already have a remoteId. If it doesn't yet (tab push failed
+      // or hasn't run this cycle), omit tab_id rather than send the local-
+      // only tab id — it'll resolve on a later sync once the tab exists
+      // remotely.
+      if (char.tabId) {
+        const localTab = await db.tabs.get(char.tabId);
+        charPayload.tab_id = localTab?.remoteId ?? null;
+      } else {
+        charPayload.tab_id = null;
+      }
 
       if (char.externalId) {
         charPayload.external_id = char.externalId;
@@ -365,7 +401,11 @@ export async function pushLocalChanges() {
       }
 
       if (remoteCharId) {
-        const active = localLoadouts.filter((l) => !l.isDeleted);
+        // Only loadouts actually edited since the last successful push —
+        // previously this re-uploaded every loadout whenever the character
+        // was dirty for any reason (e.g. a stat tweak), which could clobber
+        // a newer edit from another browser with a stale local snapshot.
+        const active = localLoadouts.filter((l) => !l.isDeleted && l.isDirty);
         const existingLoadouts = active.filter((l) => l.remoteId);
         const newLoadouts = active.filter((l) => !l.remoteId);
 
@@ -396,6 +436,10 @@ export async function pushLocalChanges() {
 
           if (error) {
             console.warn("pushLocalChanges: loadouts upsert error", error);
+          } else {
+            for (const l of existingLoadouts) {
+              await db.loadouts.update(l.id!, { isDirty: false });
+            }
           }
         }
 
@@ -434,6 +478,7 @@ export async function pushLocalChanges() {
               if (local) {
                 await db.loadouts.update(local.id!, {
                   remoteId: remote.id,
+                  isDirty: false,
                 });
               }
             }
@@ -957,6 +1002,15 @@ async function pullRemoteCharacters() {
 
     const remoteTime = new Date(remote.updated_at).getTime();
 
+    // Translate the remote tab reference (Supabase user_tabs.id) back to
+    // the local tab's own id — Character.tabId is keyed by the local id,
+    // not the remote one.
+    let localTabId: string | undefined = undefined;
+    if (remote.tab_id) {
+      const matchingTab = await db.tabs.where("remoteId").equals(remote.tab_id).first();
+      localTabId = matchingTab?.id;
+    }
+
     if (!local) {
       await db.characters.add({
         remoteId: remote.id,
@@ -970,6 +1024,7 @@ async function pullRemoteCharacters() {
         charImage: remote.charImage,
         historySum: remote.history_sum,
         schemaVersion: remote.schema_version,
+        tabId: localTabId,
         updatedAt: remoteTime,
         isDirty: false,
       });
@@ -993,6 +1048,7 @@ async function pullRemoteCharacters() {
         charImage: remote.charImage,
         historySum: remote.history_sum,
         schemaVersion: remote.schema_version,
+        tabId: localTabId,
         updatedAt: remoteTime,
         isDirty: false,
       });
