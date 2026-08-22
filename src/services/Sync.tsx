@@ -165,9 +165,6 @@ export async function pushTabs() {
 
   const localTabs = await db.tabs.toArray();
 
-  // Deleted tabs: remove the remote row first (if it ever existed), then
-  // drop the local row. Previously this only ever deleted locally, so the
-  // next pull would just bring the tab right back.
   const deleted = localTabs.filter((t) => t.isDeleted);
   for (const local of deleted) {
     if (local.remoteId) {
@@ -177,7 +174,7 @@ export async function pushTabs() {
         .eq("id", local.remoteId);
       if (error) {
         console.warn("pushTabs: failed to delete remote tab", local.name, error);
-        continue; // keep the local soft-delete marker, retry next sync
+        continue;
       }
     }
     await db.tabs.delete(local.id!);
@@ -195,10 +192,6 @@ export async function pushTabs() {
         })
         .eq("id", local.remoteId);
     } else {
-      // Upsert by (discord_id, name) instead of a blind insert: if this
-      // same tab was already created and pushed from another browser
-      // before this one had a chance to pull, this converges to the same
-      // remote row instead of creating a duplicate.
       const { data, error } = await supabase
         .from("user_tabs")
         .upsert(
@@ -246,11 +239,6 @@ export async function pushLocalChanges() {
         source: char.source ?? "web",
       };
 
-      // Tabs are pushed earlier in syncAll(), so by now the referenced tab
-      // should already have a remoteId. If it doesn't yet (tab push failed
-      // or hasn't run this cycle), omit tab_id rather than send the local-
-      // only tab id — it'll resolve on a later sync once the tab exists
-      // remotely.
       if (char.tabId) {
         const localTab = await db.tabs.get(char.tabId);
         charPayload.tab_id = localTab?.remoteId ?? null;
@@ -401,14 +389,11 @@ export async function pushLocalChanges() {
       }
 
       if (remoteCharId) {
-        // Only loadouts actually edited since the last successful push —
-        // previously this re-uploaded every loadout whenever the character
-        // was dirty for any reason (e.g. a stat tweak), which could clobber
-        // a newer edit from another browser with a stale local snapshot.
-        const active = localLoadouts.filter((l) => !l.isDeleted && l.isDirty);
+        const active = localLoadouts.filter((l) => !l.isDeleted);
         const existingLoadouts = active.filter((l) => l.remoteId);
         const newLoadouts = active.filter((l) => !l.remoteId);
 
+        // Existing loadouts: update by id
         if (existingLoadouts.length > 0) {
           const existingRecords = existingLoadouts.map((l) => ({
             id: l.remoteId,
@@ -443,6 +428,7 @@ export async function pushLocalChanges() {
           }
         }
 
+        // New loadouts: upsert by character_id,name to avoid duplicate-key errors
         if (newLoadouts.length > 0) {
           const newRecords = newLoadouts.map((l) => ({
             character_id: remoteCharId,
@@ -463,15 +449,15 @@ export async function pushLocalChanges() {
             updated_at: new Date(l.updatedAt).toISOString(),
           }));
 
-          const { data: inserted, error } = await supabase
+          const { data: upserted, error } = await supabase
             .from("loadouts")
-            .insert(newRecords)
+            .upsert(newRecords, { onConflict: "character_id,name" })
             .select();
 
           if (error) {
-            console.warn("pushLocalChanges: loadouts insert error", error);
-          } else if (inserted) {
-            for (const remote of inserted) {
+            console.warn("pushLocalChanges: loadouts upsert error", error);
+          } else if (upserted) {
+            for (const remote of upserted) {
               const local = newLoadouts.find(
                 (l) => l.name === remote.name && l.characterId === char.id
               );
@@ -1002,9 +988,6 @@ async function pullRemoteCharacters() {
 
     const remoteTime = new Date(remote.updated_at).getTime();
 
-    // Translate the remote tab reference (Supabase user_tabs.id) back to
-    // the local tab's own id — Character.tabId is keyed by the local id,
-    // not the remote one.
     let localTabId: string | undefined = undefined;
     if (remote.tab_id) {
       const matchingTab = await db.tabs.where("remoteId").equals(remote.tab_id).first();
