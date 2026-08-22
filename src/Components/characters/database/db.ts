@@ -387,6 +387,29 @@ class OpenSourceDB extends Dexie {
       // No default data needed; main/npc are virtual tabs.
       // Existing characters will have tabId undefined (main/npc auto-classified).
     });
+
+    // Version 12 – fix tabs table to have unique primary key and deduplicate
+    this.version(12).stores({
+      tabs: `&id, order`          // unique primary key on id
+    }).upgrade(async (tx) => {
+      const allTabs = await tx.table("tabs").toArray();
+      const seen = new Map<string, any>();
+
+      // Keep first occurrence of each name, remove duplicates
+      const toDelete: any[] = [];
+      for (const tab of allTabs) {
+        const key = tab.name?.toLowerCase().trim();
+        if (key && seen.has(key)) {
+          toDelete.push(tab.id);
+        } else if (key) {
+          seen.set(key, tab);
+        }
+      }
+
+      for (const id of toDelete) {
+        await tx.table("tabs").delete(id);
+      }
+    });
   }
 }
 

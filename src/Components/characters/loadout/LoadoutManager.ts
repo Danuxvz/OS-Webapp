@@ -28,7 +28,7 @@ export const loadoutManager = {
     const rows = await db.loadouts
       .where("characterId")
       .equals(characterId)
-      .filter((l) => !l.isDeleted) // exclude deleted
+      .filter((l) => !l.isDeleted)
       .toArray();
 
     return rows.map(dbToUI);
@@ -36,26 +36,56 @@ export const loadoutManager = {
 
   async create(loadout: Loadout): Promise<Loadout> {
     const id = await db.loadouts.add(uiToDB(loadout));
+
+    // Mark the character dirty so pushLocalChanges picks up the new loadout
+    await db.characters.update(loadout.characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
     return { ...loadout, id: String(id) };
   },
 
   async update(loadout: Loadout): Promise<void> {
     const existing = await db.loadouts.get(Number(loadout.id));
     if (!existing) return;
+
     await db.loadouts.put({
       ...existing,
       ...uiToDB(loadout),
     });
+
+    // Mark the character dirty so changes sync to other browsers
+    await db.characters.update(loadout.characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
   },
 
   async delete(loadoutId: string): Promise<void> {
+    const loadout = await db.loadouts.get(Number(loadoutId));
+    if (!loadout) return;
+
     await db.loadouts.delete(Number(loadoutId));
+
+    await db.characters.update(loadout.characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
   },
 
   async markLoadoutDeleted(loadoutId: string): Promise<void> {
     const id = Number(loadoutId);
+    const loadout = await db.loadouts.get(id);
+    if (!loadout) return;
+
     await db.loadouts.update(id, {
       isDeleted: true,
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
+    await db.characters.update(loadout.characterId, {
       isDirty: true,
       updatedAt: Date.now(),
     });
