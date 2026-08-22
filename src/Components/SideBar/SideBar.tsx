@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { Character, Tab } from '../characters/database/db';
 import CharacterDetails from "./CharacterDetails.tsx";
+import PromptModal from "./Promptmodal.tsx";
+import ConfirmModal from "./ConfirmModal.tsx";
 import { refreshMetadata } from '../../services/enteMetadataService.ts';
 import { characterManager } from '../characters/CharacterManager';
 import { getLoggedInDiscordUser, logout } from '../../services/SupaBase.ts';
@@ -43,6 +45,36 @@ function ControlPanel({
   const [discordUser, setDiscordUser] = useState<DiscordUser | null>(null);
   const [tabs, setTabs] = useState<Tab[]>([]);
 
+  // Tabs are always rendered sorted by creation order, regardless of how
+  // `tabs` state was last mutated (optimistic append, background sync, etc.)
+  const sortedTabs = useMemo(
+    () => [...tabs].sort((a, b) => a.order - b.order),
+    [tabs]
+  );
+
+  // ---------------------------------------------------------------
+  // In-app replacements for window.prompt()/window.confirm()
+  // ---------------------------------------------------------------
+  const [promptState, setPromptState] = useState<{ title: string; placeholder?: string } | null>(null);
+  const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
+
+  const [confirmState, setConfirmState] = useState<{ message: string } | null>(null);
+  const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
+
+  function showPrompt(title: string, placeholder?: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      promptResolveRef.current = resolve;
+      setPromptState({ title, placeholder });
+    });
+  }
+
+  function showConfirm(message: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      confirmResolveRef.current = resolve;
+      setConfirmState({ message });
+    });
+  }
+
   useEffect(() => {
     async function fetchUser() {
       const user = await getLoggedInDiscordUser();
@@ -70,15 +102,16 @@ function ControlPanel({
   }, [characters, activeTabId]);
 
   const handleAddTab = async () => {
-    const name = window.prompt("Nombre de la nueva pestaña:");
+    const name = await showPrompt("Nombre de la nueva pestaña:", "Ej: Villanos");
     if (!name?.trim()) return;
     const newId = await characterManager.createTab(name.trim());
-    setTabs(prev => [...prev, { id: newId, name: name.trim(), order: prev.length }]);
+    const nextOrder = tabs.length ? Math.max(...tabs.map((t) => t.order)) + 1 : 0;
+    setTabs(prev => [...prev, { id: newId, name: name.trim(), order: nextOrder }]);
     setActiveTabId(newId);
   };
 
   const handleDeleteTab = async (tabId: string) => {
-    const confirmed = confirm("Eliminar pestaña y mover personajes a NPC?");
+    const confirmed = await showConfirm("Eliminar pestaña y mover personajes a NPC?");
     if (!confirmed) return;
     await characterManager.deleteTab(tabId);
     setTabs(prev => prev.filter(t => t.id !== tabId));
@@ -192,7 +225,7 @@ function ControlPanel({
             {tab.name}
           </button>
         ))}
-        {tabs.map(tab => (
+        {sortedTabs.map(tab => (
           <button
             key={tab.id}
             className={`sidebar-tab ${activeTabId === tab.id ? "active" : ""}`}
@@ -219,7 +252,7 @@ function ControlPanel({
               character={char}
               isActive={char.id === activeCharacterId}
               onSelect={() => selectCharacter(char.id!)}
-              tabs={tabs}
+              tabs={sortedTabs}
               onMoveToTab={handleMoveCharacter}
             />
           ))}
@@ -234,6 +267,39 @@ function ControlPanel({
           </div>
         </div>
       </div>
+
+      {promptState && (
+        <PromptModal
+          title={promptState.title}
+          placeholder={promptState.placeholder}
+          onSubmit={(value) => {
+            promptResolveRef.current?.(value.trim() ? value : null);
+            promptResolveRef.current = null;
+            setPromptState(null);
+          }}
+          onCancel={() => {
+            promptResolveRef.current?.(null);
+            promptResolveRef.current = null;
+            setPromptState(null);
+          }}
+        />
+      )}
+
+      {confirmState && (
+        <ConfirmModal
+          message={confirmState.message}
+          onConfirm={() => {
+            confirmResolveRef.current?.(true);
+            confirmResolveRef.current = null;
+            setConfirmState(null);
+          }}
+          onCancel={() => {
+            confirmResolveRef.current?.(false);
+            confirmResolveRef.current = null;
+            setConfirmState(null);
+          }}
+        />
+      )}
     </>
   );
 }
