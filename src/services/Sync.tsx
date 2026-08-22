@@ -36,7 +36,6 @@ function parseInventoryBlob(blob: string) {
 async function deduplicateCharacters() {
   const allChars = await db.characters.toArray();
 
-  // Group by externalId
   const groups = new Map<string, Character[]>();
   for (const c of allChars) {
     if (!c.externalId) continue;
@@ -114,6 +113,89 @@ async function deduplicateCharacters() {
 }
 
 /* =========================
+   TABS SYNC
+========================= */
+
+async function pullTabs() {
+  const discordId = getDiscordId();
+  if (!discordId) return;
+
+  const { data: remoteTabs, error } = await supabase
+    .from("user_tabs")
+    .select("*")
+    .eq("discord_id", discordId)
+    .order("order");
+
+  if (error) {
+    console.warn("pullTabs: failed to fetch remote tabs", error);
+    return;
+  }
+
+  const localTabs = await db.tabs.toArray();
+
+  for (const remote of remoteTabs ?? []) {
+    const local = localTabs.find((t) => t.remoteId === remote.id);
+    if (local) {
+      await db.tabs.update(local.id!, {
+        name: remote.name,
+        order: remote.order,
+        remoteId: remote.id,
+      });
+    } else {
+      await db.tabs.add({
+        id: remote.id,
+        remoteId: remote.id,
+        name: remote.name,
+        order: remote.order,
+      });
+    }
+  }
+
+  const remoteIds = new Set((remoteTabs ?? []).map((r) => r.id));
+  for (const local of localTabs) {
+    if (local.remoteId && !remoteIds.has(local.remoteId)) {
+      await db.tabs.delete(local.id!);
+    }
+  }
+}
+
+async function pushTabs() {
+  const discordId = getDiscordId();
+  if (!discordId) return;
+
+  const localTabs = await db.tabs.toArray();
+
+  for (const local of localTabs) {
+    if (local.remoteId) {
+      await supabase
+        .from("user_tabs")
+        .update({
+          name: local.name,
+          order: local.order,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", local.remoteId);
+    } else {
+      const { data, error } = await supabase
+        .from("user_tabs")
+        .insert({
+          discord_id: discordId,
+          name: local.name,
+          order: local.order,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        await db.tabs.update(local.id!, {
+          remoteId: data.id,
+        });
+      }
+    }
+  }
+}
+
+/* =========================
    PUSH LOCAL → SUPABASE
 ========================= */
 
@@ -127,10 +209,6 @@ export async function pushLocalChanges() {
 
   for (const char of dirtyCharacters) {
     try {
-      /* =========================
-           UPSERT CHARACTER
-      ========================= */
-
       const charPayload: any = {
         user_id: remoteUserId,
         char_name: char.charName,
@@ -172,10 +250,6 @@ export async function pushLocalChanges() {
           remoteId: remoteCharId,
         });
       }
-
-      /* =========================
-           UPSERT ENTES
-      ========================= */
 
       if (!remoteCharId) continue;
 
@@ -235,10 +309,6 @@ export async function pushLocalChanges() {
         }
       }
 
-      /* =========================
-           UPSERT INVENTORY
-      ========================= */
-
       const inv = await db.inventory
         .where("characterId")
         .equals(char.id!)
@@ -271,10 +341,6 @@ export async function pushLocalChanges() {
           });
         }
       }
-
-      /* =========================
-           LOADOUTS
-      ========================= */
 
       const localLoadouts = await db.loadouts
         .where("characterId")
@@ -963,7 +1029,9 @@ async function pullRemoteCharacters() {
 
 export async function syncAll() {
   await deduplicateCharacters();
+  await pullTabs();
   await pullRemoteCharacters();
   await pullCharactersExport();
+  await pushTabs();
   await pushLocalChanges();
 }

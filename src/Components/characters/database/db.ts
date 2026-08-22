@@ -50,7 +50,7 @@ export interface Character extends SyncMeta {
   charImage: string;
   historySum: number;
   schemaVersion: number;
-  tabId?: string;                     // <-- new
+  tabId?: string;
 }
 
 export interface CustomItem {
@@ -123,6 +123,7 @@ export interface DBLoadout extends SyncMeta {
 
 export interface Tab {
   id?: string;
+  remoteId?: string;
   name: string;
   order: number;
 }
@@ -138,7 +139,7 @@ class OpenSourceDB extends Dexie {
   entes!: Table<CharacterEnte, number>;
   loadouts!: Table<DBLoadout, number>;
   enteMetadata!: Table<EnteMetadata, string>;
-  tabs!: Table<Tab, string>;              // <-- new
+  tabs!: Table<Tab, string>;
 
   constructor() {
     super("OpenSourceDB");
