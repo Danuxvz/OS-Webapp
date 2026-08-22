@@ -326,14 +326,19 @@
 
   .he-image-wrapper {
     flex-shrink: 0;
-    width: 25%;
+    width: 60px;        // fixed width
+    height: 60px;       // fixed height
     border-radius: 0.4rem;
     overflow: hidden;
     background: #0f0f0f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
     img {
       width: 100%;
-      object-fit: cover;
+      height: 100%;
+      object-fit: contain;    // show the whole card image
       filter: grayscale(100%);
       transition: filter 0.2s ease;
     }
@@ -379,7 +384,7 @@
 
 .he-selected-card {
   img {
-    object-fit: cover;
+    object-fit: contain;
     border-radius: 0.3rem;
   }
 }

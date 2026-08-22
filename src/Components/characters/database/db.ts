@@ -50,6 +50,7 @@ export interface Character extends SyncMeta {
   charImage: string;
   historySum: number;
   schemaVersion: number;
+  tabId?: string;                     // <-- new
 }
 
 export interface CustomItem {
@@ -117,6 +118,16 @@ export interface DBLoadout extends SyncMeta {
 }
 
 /* =========================
+   TABS
+========================= */
+
+export interface Tab {
+  id?: string;
+  name: string;
+  order: number;
+}
+
+/* =========================
    DATABASE CLASS
 ========================= */
 
@@ -127,6 +138,7 @@ class OpenSourceDB extends Dexie {
   entes!: Table<CharacterEnte, number>;
   loadouts!: Table<DBLoadout, number>;
   enteMetadata!: Table<EnteMetadata, string>;
+  tabs!: Table<Tab, string>;              // <-- new
 
   constructor() {
     super("OpenSourceDB");
@@ -169,35 +181,18 @@ class OpenSourceDB extends Dexie {
         updatedAt
       `
     }).upgrade(async (tx) => {
-
-      /* =========================
-         CHARACTERS
-      ========================= */
-
       const characters = await tx.table("characters").toArray();
       for (const char of characters) {
         if (!("remoteId" in char)) char.remoteId = undefined;
         if (!("externalId" in char)) char.externalId = null;
         if (!("source" in char)) char.source = "web";
 
-        if (!char.bonusLog) {
-          char.bonusLog = { hp: {}, atk: {}, slots: {} };
-        }
-
-        if (!char.tempStatBonus) {
-          char.tempStatBonus = { hp: 0, atk: 0, slots: 0 };
-        }
-
-        if (!char.baseStats) {
-          char.baseStats = { hp: 10, atk: 0, slots: 15 };
-        }
+        if (!char.bonusLog) char.bonusLog = { hp: {}, atk: {}, slots: {} };
+        if (!char.tempStatBonus) char.tempStatBonus = { hp: 0, atk: 0, slots: 0 };
+        if (!char.baseStats) char.baseStats = { hp: 10, atk: 0, slots: 15 };
 
         await tx.table("characters").put(char);
       }
-
-      /* =========================
-         INVENTORY
-      ========================= */
 
       const inventory = await tx.table("inventory").toArray();
       for (const inv of inventory) {
@@ -205,29 +200,17 @@ class OpenSourceDB extends Dexie {
         await tx.table("inventory").put(inv);
       }
 
-      /* =========================
-         ENTES
-      ========================= */
-
       const entes = await tx.table("entes").toArray();
       for (const ente of entes) {
         if (!("remoteId" in ente)) ente.remoteId = undefined;
         await tx.table("entes").put(ente);
       }
 
-      /* =========================
-         LOADOUTS
-      ========================= */
-
       const loadouts = await tx.table("loadouts").toArray();
       for (const loadout of loadouts) {
         if (!("remoteId" in loadout)) loadout.remoteId = undefined;
         await tx.table("loadouts").put(loadout);
       }
-
-      /* =========================
-         USERS
-      ========================= */
 
       const users = await tx.table("users").toArray();
       for (const user of users) {
@@ -381,6 +364,27 @@ class OpenSourceDB extends Dexie {
           await tx.table("inventory").put(inv);
         }
       }
+    });
+
+    // Version 11 – tabs + character tab assignment
+    this.version(11).stores({
+      characters: `
+        ++id,
+        remoteId,
+        externalId,
+        source,
+        discordId,
+        charName,
+        updatedAt,
+        tabId
+      `,
+      tabs: `
+        id,
+        order
+      `
+    }).upgrade(async () => {
+      // No default data needed; main/npc are virtual tabs.
+      // Existing characters will have tabId undefined (main/npc auto-classified).
     });
   }
 }

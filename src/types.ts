@@ -20,7 +20,6 @@ export interface Ente {
   customImage?: string;
 }
 
-
 /* =====================================================
    LOADOUT CORE PARTS
 ===================================================== */
@@ -128,6 +127,41 @@ export interface LoadoutSlots {
   cards: LoadoutSlotCard[];
 }
 
+/* =====================================================
+   NPC MAKER CUSTOM ADDITIONS
+===================================================== */
+
+export interface CustomHE {
+  id: string;
+  name: string;
+  text: string;
+  image?: string;
+}
+
+export interface CustomAC {
+  id: string;
+  type: ArmorType;
+  name: string;
+  bonus: number;
+  text: string;
+  image?: string;
+}
+
+export interface CustomWeapon {
+  id: string;
+  name: string;
+  size: string;
+  type: string;
+  element: string;
+  damageBonus: number;
+  image?: string;
+}
+
+export interface ActiveSkill {
+  id: string;
+  name: string;
+  text: string;
+}
 
 /* =====================================================
    LOADOUT DATA (STORED IN DB)
@@ -141,8 +175,15 @@ export interface LoadoutData {
   armorClass: LoadoutAC;
   slots: LoadoutSlots;
   notes: string;
-}
 
+  // NPC Maker custom additions
+  customHE?: CustomHE[];
+  customACs?: CustomAC[];
+  customWeapons?: CustomWeapon[];
+  habilidadesActivas?: ActiveSkill[];
+  activeAEIds?: string[];
+  selectedActivaIds?: string[];
+}
 
 /* =====================================================
    FULL LOADOUT (UI VERSION)

@@ -1,4 +1,3 @@
-// LoadoutPopup.tsx
 import type {
   Loadout,
   LoadoutHpSource,
@@ -14,6 +13,7 @@ import HESection from "./LoadoutPopupSections/HESection";
 import ACSection from "./LoadoutPopupSections/ACSection";
 import SlotsSection from "./LoadoutPopupSections/SlotsSection";
 import NotesSection from "./LoadoutPopupSections/NotesSection";
+import ActivasSection from "./LoadoutPopupSections/ActivasSection";
 
 interface Props {
   section: string;
@@ -22,9 +22,11 @@ interface Props {
   atkSources: LoadoutHpSource[];
   weaponSources: LoadoutWeaponSource[];
   heSources: LoadoutHeSource[];
+  aeSources: LoadoutHeSource[];
   acSources: LoadoutACSource[];
   slotSources: LoadoutSlotSource[];
   slotCardSources: { cardId: string; name: string; image?: string; amount: number }[];
+  isNpcMode?: boolean;
   onClose: () => void;
   onSave: (loadout: Loadout) => void;
 }
@@ -36,9 +38,11 @@ function LoadoutPopup({
   atkSources,
   weaponSources,
   heSources,
+  aeSources,
   acSources,
   slotSources,
   slotCardSources,
+  isNpcMode = false,
   onClose,
   onSave,
 }: Props) {
@@ -49,9 +53,9 @@ function LoadoutPopup({
       case "atk":
         return <ATKSection loadout={loadout} atkSources={atkSources} onSave={onSave} />;
       case "weapon":
-        return <WeaponSection loadout={loadout} weaponSources={weaponSources} onSave={onSave} />;
+        return <WeaponSection loadout={loadout} weaponSources={weaponSources} isNpcMode={isNpcMode} onSave={onSave} />;
       case "he":
-        return <HESection loadout={loadout} heSources={heSources} onSave={onSave} />;
+        return <HESection loadout={loadout} heSources={heSources} isNpcMode={isNpcMode} onSave={onSave} />;
       case "ac":
         return <ACSection loadout={loadout} acSources={acSources} onSave={onSave} />;
       case "slots":
@@ -63,6 +67,8 @@ function LoadoutPopup({
             onSave={onSave}
           />
         );
+      case "activas":
+        return <ActivasSection loadout={loadout} aeSources={aeSources} isNpcMode={isNpcMode} onSave={onSave} />;
       case "notes":
         return <NotesSection loadout={loadout} onSave={onSave} />;
       default:

@@ -47,7 +47,6 @@ async function deduplicateCharacters() {
   for (const chars of groups.values()) {
     if (chars.length <= 1) continue;
 
-    // Prefer the one with the current user's discordId, else the latest updated
     const currentDiscordId = getDiscordId();
     let keeper: Character | undefined =
       chars.find(c => c.discordId === currentDiscordId) ?? chars[0];
@@ -60,11 +59,9 @@ async function deduplicateCharacters() {
 
     if (!keeper) continue;
 
-    // Process each duplicate – move entes/loadouts, then delete duplicate
     for (const dup of chars) {
       if (dup.id === keeper.id) continue;
 
-      // ----- Move local entes -----
       const entes = await db.entes.where({ characterId: dup.id }).toArray();
       for (const ente of entes) {
         const existing = await db.entes
@@ -79,7 +76,6 @@ async function deduplicateCharacters() {
             isDirty: true,
           });
         } else {
-          // Merge notes/customImage if keeper's entry is empty
           let shouldUpdate = false;
           const updateData: any = { updatedAt: Date.now(), isDirty: true };
           if (!existing.notes && ente.notes) {
@@ -97,7 +93,6 @@ async function deduplicateCharacters() {
         }
       }
 
-      // ----- Move loadouts -----
       const loadouts = await db.loadouts.where({ characterId: dup.id }).toArray();
       for (const l of loadouts) {
         await db.loadouts.update(l.id!, {
@@ -107,14 +102,10 @@ async function deduplicateCharacters() {
         });
       }
 
-      // Delete duplicate's local inventory (keeper's inventory is kept)
       await db.inventory.where({ characterId: dup.id }).delete();
-
-      // Delete duplicate local character
       await db.characters.delete(dup.id!);
     }
 
-    // Mark keeper dirty so it gets pushed to remote
     await db.characters.update(keeper.id!, {
       updatedAt: Date.now(),
       isDirty: true,
@@ -170,10 +161,7 @@ export async function pushLocalChanges() {
         .single();
 
       if (charUpsert.error) {
-        console.warn(
-          "pushLocalChanges: character upsert error",
-          charUpsert.error
-        );
+        console.warn("pushLocalChanges: character upsert error", charUpsert.error);
         continue;
       }
 
@@ -200,7 +188,6 @@ export async function pushLocalChanges() {
         const deletedEntes = localEntes.filter(e => e.isDeleted);
         const activeEntes = localEntes.filter(e => !e.isDeleted);
 
-        // Soft‑delete on remote: update is_deleted = true instead of deleting the row
         for (const ente of deletedEntes) {
           const { error } = await supabase
             .from("entes")
@@ -214,11 +201,7 @@ export async function pushLocalChanges() {
               updatedAt: Date.now(),
             });
           } else {
-            console.warn(
-              "pushLocalChanges: failed to mark ente deleted",
-              ente.enteID,
-              error
-            );
+            console.warn("pushLocalChanges: failed to mark ente deleted", ente.enteID, error);
           }
         }
 
@@ -247,10 +230,7 @@ export async function pushLocalChanges() {
             .upsert(enteRecords, { onConflict: "character_id,ente_id" });
 
           if (entesUpsert.error) {
-            console.warn(
-              "pushLocalChanges: entes upsert error",
-              entesUpsert.error
-            );
+            console.warn("pushLocalChanges: entes upsert error", entesUpsert.error);
           }
         }
       }
@@ -284,10 +264,7 @@ export async function pushLocalChanges() {
           .single();
 
         if (invUpsert.error) {
-          console.warn(
-            "pushLocalChanges: inventory upsert error",
-            invUpsert.error
-          );
+          console.warn("pushLocalChanges: inventory upsert error", invUpsert.error);
         } else if (!inv.remoteId && invUpsert.data?.id) {
           await db.inventory.update(inv.id!, {
             remoteId: invUpsert.data.id,
@@ -338,6 +315,12 @@ export async function pushLocalChanges() {
             armor_class: l.data.armorClass,
             slots: l.data.slots,
             notes: l.data.notes ?? null,
+            custom_he: l.data.customHE ?? [],
+            custom_acs: l.data.customACs ?? [],
+            custom_weapons: l.data.customWeapons ?? [],
+            habilidades_activas: l.data.habilidadesActivas ?? [],
+            active_ae_ids: l.data.activeAEIds ?? [],
+            selected_activa_ids: l.data.selectedActivaIds ?? [],
             updated_at: new Date(l.updatedAt).toISOString(),
           }));
 
@@ -361,6 +344,12 @@ export async function pushLocalChanges() {
             armor_class: l.data.armorClass,
             slots: l.data.slots,
             notes: l.data.notes ?? null,
+            custom_he: l.data.customHE ?? [],
+            custom_acs: l.data.customACs ?? [],
+            custom_weapons: l.data.customWeapons ?? [],
+            habilidades_activas: l.data.habilidadesActivas ?? [],
+            active_ae_ids: l.data.activeAEIds ?? [],
+            selected_activa_ids: l.data.selectedActivaIds ?? [],
             updated_at: new Date(l.updatedAt).toISOString(),
           }));
 
@@ -412,11 +401,7 @@ export async function deleteRemoteCharacter(localCharId: number) {
       .eq("id", charId);
 
     if (charError) {
-      console.warn(
-        "Failed to delete remote character",
-        localChar.charName,
-        charError
-      );
+      console.warn("Failed to delete remote character", localChar.charName, charError);
     }
 
     const { error: entesError } = await supabase
@@ -425,11 +410,7 @@ export async function deleteRemoteCharacter(localCharId: number) {
       .eq("character_id", charId);
 
     if (entesError) {
-      console.warn(
-        "Failed to delete remote entes for",
-        localChar.charName,
-        entesError
-      );
+      console.warn("Failed to delete remote entes for", localChar.charName, entesError);
     }
 
     const { error: invError } = await supabase
@@ -438,11 +419,7 @@ export async function deleteRemoteCharacter(localCharId: number) {
       .eq("character_id", charId);
 
     if (invError) {
-      console.warn(
-        "Failed to delete remote inventory for",
-        localChar.charName,
-        invError
-      );
+      console.warn("Failed to delete remote inventory for", localChar.charName, invError);
     }
 
     const { error: loadoutError } = await supabase
@@ -451,17 +428,10 @@ export async function deleteRemoteCharacter(localCharId: number) {
       .eq("character_id", charId);
 
     if (loadoutError) {
-      console.warn(
-        "Failed to delete remote loadouts for",
-        localChar.charName,
-        loadoutError
-      );
+      console.warn("Failed to delete remote loadouts for", localChar.charName, loadoutError);
     }
 
-    console.info(
-      "Deleted remote character and related data:",
-      localChar.charName
-    );
+    console.info("Deleted remote character and related data:", localChar.charName);
   } catch (err) {
     console.error("deleteRemoteCharacter unexpected error:", err);
   }
@@ -518,7 +488,6 @@ export async function pullCharactersExport() {
       .first();
 
     if (localChar) {
-      // Reassign to current user if it was imported under a wrong discordId
       if (localChar.discordId !== getDiscordId()) {
         await db.characters.update(localChar.id!, {
           discordId: getDiscordId()!,
@@ -617,7 +586,6 @@ export async function pullCharactersExport() {
           });
         }
       } else {
-        // New ente from export – set updatedAt to 0 so remote pull can fill metadata
         await db.entes.add({
           characterId: localChar!.id!,
           enteID: rawId,
@@ -811,6 +779,12 @@ async function pullRemoteLoadouts() {
         armorClass: remote.armor_class,
         slots: remote.slots,
         notes: remote.notes ?? "",
+        customHE: remote.custom_he ?? [],
+        customACs: remote.custom_acs ?? [],
+        customWeapons: remote.custom_weapons ?? [],
+        habilidadesActivas: remote.habilidades_activas ?? [],
+        activeAEIds: remote.active_ae_ids ?? [],
+        selectedActivaIds: remote.selected_activa_ids ?? [],
       };
 
       if (!existing) {
@@ -908,7 +882,6 @@ async function pullRemoteCharacters() {
       .equals(remote.id)
       .first();
 
-    // Fallback: try to find by externalId (in case local record lost remoteId)
     if (!local && remote.external_id) {
       local = await db.characters
         .where("externalId")
@@ -937,7 +910,6 @@ async function pullRemoteCharacters() {
       continue;
     }
 
-    // If found by externalId but missing remoteId, attach remoteId and update
     if (!local.remoteId) {
       await db.characters.update(local.id!, {
         remoteId: remote.id,

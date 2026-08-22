@@ -172,12 +172,10 @@ function EntesSection({ characterId }: EntesSectionProps) {
   // 🔁 Reset everything when character changes
   useEffect(() => {
     mountedRef.current = true;
-    // Immediately clear stale data so the old list doesn't flash
     setEntes([]);
     setExpandedId(null);
     setDraggedId(null);
 
-    // Cancel any in‑progress load for the previous character
     isLoadingRef.current = false;
     needsReloadRef.current = false;
 
@@ -207,7 +205,23 @@ function EntesSection({ characterId }: EntesSectionProps) {
   async function updateEnte(updated: Ente) {
     if (!characterId) return;
 
+    // Update local state immediately
     setEntes((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+
+    // Compare against current stored ente and skip if nothing meaningful changed.
+    // This prevents EnteCard's initial mount from writing the same data and
+    // triggering enteUpdated → loadEntes → mount → ... infinite reload.
+    const existing = entes.find((e) => e.id === updated.id);
+    if (existing) {
+      const hasChanges =
+        existing.amount !== updated.amount ||
+        existing.unlockLevel !== updated.unlockLevel ||
+        existing.notes !== updated.notes ||
+        existing.customImage !== updated.customImage ||
+        existing.favorite !== updated.favorite;
+
+      if (!hasChanges) return;
+    }
 
     try {
       await characterManager.updateEnte(characterId, updated.id, {

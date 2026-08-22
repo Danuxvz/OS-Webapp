@@ -31,6 +31,7 @@ const CARDS: Record<string, { name: string; img: string }> = {
 
 interface LoadoutSectionProps {
   characterId: number | null;
+  isNpcMode?: boolean;
 }
 
 function parseAcMeta(raw: string | undefined): { type: ArmorType; name: string; bonus: number; text: string } {
@@ -59,12 +60,18 @@ function parseAcMeta(raw: string | undefined): { type: ArmorType; name: string; 
   };
 }
 
-function LoadoutSection({ characterId }: LoadoutSectionProps) {
+// Helper: only accept IDs that look like ente IDs (e.g., E001, D020, C009T)
+function isEnteId(id: string): boolean {
+  return /^[A-Z]\d{3}[A-Z]*$/i.test(id);
+}
+
+function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps) {
   const [loadouts, setLoadouts] = useState<Loadout[]>([]);
   const [hpSources, setHpSources] = useState<LoadoutHpSource[]>([]);
   const [atkSources, setAtkSources] = useState<LoadoutHpSource[]>([]);
   const [weaponSources, setWeaponSources] = useState<LoadoutWeaponSource[]>([]);
   const [heSources, setHeSources] = useState<LoadoutHeSource[]>([]);
+  const [aeSources, setAeSources] = useState<LoadoutHeSource[]>([]);
   const [acSources, setAcSources] = useState<LoadoutACSource[]>([]);
   const [slotSources, setSlotSources] = useState<LoadoutSlotSource[]>([]);
   const [slotCardSources, setSlotCardSources] = useState<
@@ -76,10 +83,10 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       characterManager.getCharacter(charId),
       characterManager.getEntes(charId),
     ]);
-
     if (!character) return [];
 
-    const hpEntries = Object.entries(character.bonusLog?.hp ?? {});
+    const hpEntries = Object.entries(character.bonusLog?.hp ?? {})
+      .filter(([enteId]) => isEnteId(enteId));
 
     return Promise.all(
       hpEntries.map(async ([enteId, bonus]) => {
@@ -101,10 +108,10 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       characterManager.getCharacter(charId),
       characterManager.getEntes(charId),
     ]);
-
     if (!character) return [];
 
-    const atkEntries = Object.entries(character.bonusLog?.atk ?? {});
+    const atkEntries = Object.entries(character.bonusLog?.atk ?? {})
+      .filter(([enteId]) => isEnteId(enteId));
 
     return Promise.all(
       atkEntries.map(async ([enteId, bonus]) => {
@@ -126,13 +133,14 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       characterManager.getCharacter(charId),
       characterManager.getEntes(charId),
     ]);
-
     if (!character) return [];
 
-    const equipped = entes.filter((e) => (e.amount ?? 0) > 0);
+    const eligible = entes.filter(
+      (e) => (e.amount ?? 0) > 0 && isEnteId(e.enteID)
+    );
 
     return Promise.all(
-      equipped.map(async (e) => {
+      eligible.map(async (e) => {
         const meta = await getEnteMetadata(e.enteID);
         return {
           enteId: e.enteID,
@@ -150,10 +158,11 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       characterManager.getCharacter(charId),
       characterManager.getEntes(charId),
     ]);
-
     if (!character) return [];
 
-    const eligible = entes.filter((e) => (e.unlockLevel ?? 0) >= 3);
+    const eligible = entes.filter(
+      (e) => (e.unlockLevel ?? 0) >= 3 && isEnteId(e.enteID)
+    );
 
     return Promise.all(
       eligible.map(async (e) => {
@@ -168,15 +177,40 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
     );
   }
 
+  async function buildAeSources(charId: number): Promise<LoadoutHeSource[]> {
+    const [character, entes] = await Promise.all([
+      characterManager.getCharacter(charId),
+      characterManager.getEntes(charId),
+    ]);
+    if (!character) return [];
+
+    const eligible = entes.filter(
+      (e) => (e.unlockLevel ?? 0) >= 2 && isEnteId(e.enteID)
+    );
+
+    return Promise.all(
+      eligible.map(async (e) => {
+        const meta = await getEnteMetadata(e.enteID);
+        return {
+          enteId: e.enteID,
+          name: meta?.name || e.enteID,
+          image: meta?.image || e.customImage || "",
+          text: meta?.AE || "No AE text",
+        };
+      })
+    );
+  }
+
   async function buildAcSources(charId: number): Promise<LoadoutACSource[]> {
     const [character, entes] = await Promise.all([
       characterManager.getCharacter(charId),
       characterManager.getEntes(charId),
     ]);
-
     if (!character) return [];
 
-    const eligible = entes.filter((e) => (e.unlockLevel ?? 0) >= 4);
+    const eligible = entes.filter(
+      (e) => (e.unlockLevel ?? 0) >= 4 && isEnteId(e.enteID)
+    );
 
     return Promise.all(
       eligible.map(async (e) => {
@@ -199,10 +233,10 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       characterManager.getCharacter(charId),
       characterManager.getEntes(charId),
     ]);
-
     if (!character) return [];
 
-    const slotEntries = Object.entries(character.bonusLog?.slots ?? {});
+    const slotEntries = Object.entries(character.bonusLog?.slots ?? {})
+      .filter(([enteId]) => isEnteId(enteId));
 
     return Promise.all(
       slotEntries.map(async ([enteId, bonus]) => {
@@ -241,6 +275,7 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       setAtkSources([]);
       setWeaponSources([]);
       setHeSources([]);
+      setAeSources([]);
       setAcSources([]);
       setSlotSources([]);
       setSlotCardSources([]);
@@ -250,11 +285,12 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
     loadoutManager.getByCharacter(characterId).then(setLoadouts);
 
     const refreshSources = async () => {
-      const [hp, atk, weapon, he, ac, slotSrc, slotCards] = await Promise.all([
+      const [hp, atk, weapon, he, ae, ac, slotSrc, slotCards] = await Promise.all([
         buildHpSources(characterId),
         buildAtkSources(characterId),
         buildWeaponSources(characterId),
         buildHeSources(characterId),
+        buildAeSources(characterId),
         buildAcSources(characterId),
         buildSlotSources(characterId),
         buildSlotCardSources(characterId),
@@ -263,6 +299,7 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       setAtkSources(atk);
       setWeaponSources(weapon);
       setHeSources(he);
+      setAeSources(ae);
       setAcSources(ac);
       setSlotSources(slotSrc);
       setSlotCardSources(slotCards);
@@ -285,9 +322,7 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
     };
   }, [characterId]);
 
-  const handleCreateLoadout = async () => {
-    if (!characterId) return;
-
+  const createDefaultLoadout = async (characterId: number) => {
     const character = await characterManager.getCharacter(characterId);
     if (!character) return;
 
@@ -300,7 +335,7 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
     const newLoadout: Loadout = {
       id: "",
       characterId,
-      name: `Loadout ${loadouts.length + 1}`,
+      name: isNpcMode ? character.charName : `Loadout ${loadouts.length + 1}`,
       data: {
         hp: {
           baseMax: character.baseStats.hp,
@@ -308,7 +343,7 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
           tempBonus: 0,
           characterTempBonus: character.tempStatBonus.hp,
           sources: currentHpSources.map((s) => ({ ...s, enabled: true })),
-          barriers: [], // initialize empty barriers
+          barriers: [],
         },
         atk: {
           base: character.baseStats.atk,
@@ -349,8 +384,47 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
     };
 
     const saved = await loadoutManager.create(newLoadout);
-    setLoadouts((prev) => [...prev, saved]);
+    return saved;
   };
+
+  const handleCreateLoadout = async () => {
+    if (!characterId) return;
+    if (isNpcMode && loadouts.length >= 1) return;
+
+    const saved = await createDefaultLoadout(characterId);
+    if (saved) {
+      setLoadouts((prev) => [...prev, saved]);
+    }
+  };
+
+  useEffect(() => {
+    if (!characterId || !isNpcMode) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const existing = await loadoutManager.getByCharacter(characterId);
+      if (cancelled) return;
+
+      if (existing.length === 0) {
+        const saved = await createDefaultLoadout(characterId);
+        if (!cancelled && saved) {
+          setLoadouts([saved]);
+        }
+      } else if (existing.length > 1) {
+        for (let i = 1; i < existing.length; i++) {
+          await loadoutManager.markLoadoutDeleted(existing[i].id);
+        }
+        if (!cancelled) {
+          setLoadouts([existing[0]]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [characterId, isNpcMode]);
 
   const handleDelete = async (loadout: Loadout) => {
     if (!loadout.id) return;
@@ -363,25 +437,33 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
       <div className="card-body">
         <div className="d-flex align-items-center justify-content-between gap-3 mb-3">
           <div>
-            <h2 className="h4 mb-1">Loadout</h2>
+            <h2 className="h4 mb-1">{isNpcMode ? "NPC Maker" : "Loadout"}</h2>
             <div className="text-muted small">
               {characterId ? "Snapshot loadouts for this character." : "Select a character first."}
             </div>
           </div>
 
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={handleCreateLoadout}
-            disabled={!characterId}
-          >
-            + Create New Loadout
-          </button>
+          {!isNpcMode && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={handleCreateLoadout}
+              disabled={!characterId}
+            >
+              + Create New Loadout
+            </button>
+          )}
         </div>
 
         {!characterId ? (
           <div className="alert alert-secondary mb-0">No character selected.</div>
         ) : loadouts.length === 0 ? (
-          <div className="alert alert-light border mb-0">No loadouts yet. Create one to start.</div>
+          isNpcMode ? (
+            <div className="alert alert-light border mb-0">
+              No loadout found. Creating...
+            </div>
+          ) : (
+            <div className="alert alert-light border mb-0">No loadouts yet. Create one to start.</div>
+          )
         ) : (
           <div className="d-grid gap-3">
             {loadouts.map((loadout) => (
@@ -392,9 +474,11 @@ function LoadoutSection({ characterId }: LoadoutSectionProps) {
                 atkSources={atkSources}
                 weaponSources={weaponSources}
                 heSources={heSources}
+                aeSources={aeSources}
                 acSources={acSources}
                 slotSources={slotSources}
                 slotCardSources={slotCardSources}
+                isNpcMode={isNpcMode}
                 onUpdate={async (updated) => {
                   if (!characterId) return;
                   await loadoutManager.update(updated);

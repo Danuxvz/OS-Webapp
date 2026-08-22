@@ -1,6 +1,5 @@
-// CharacterManager.ts
 import { db } from "./database/db";
-import type { Character, CharacterEnte } from "./database/db";
+import type { Character, CharacterEnte, Tab } from "./database/db";
 import { StatBonusEngine } from "./entes/StatBonus";
 import "./entes/SpecialEntes";
 import { getEnteMetadata } from "../../services/enteMetadataService";
@@ -110,9 +109,7 @@ class CharacterManager {
           });
 
         if (modifiedCount === 0) {
-          throw new Error(
-            `Ente ${u.id} not found for character ${characterId}`
-          );
+          throw new Error(`Ente ${u.id} not found for character ${characterId}`);
         }
       }
     });
@@ -329,7 +326,6 @@ class CharacterManager {
 
     await db.transaction("rw", db.entes, async () => {
       if (target) {
-        // Temporary rename to avoid unique constraint collision
         const tempId = `__daruma_swap__${now}_${Math.random().toString(36).slice(2, 8)}`;
 
         await db.entes.update(target.id!, {
@@ -352,7 +348,6 @@ class CharacterManager {
           isDirty: true,
         });
       } else {
-        // Only source exists; just swap its enteID
         await db.entes.update(source.id!, {
           enteID: targetEnteID,
           amount: sourceAmount,
@@ -439,6 +434,41 @@ class CharacterManager {
 
   async getLoadouts(characterId: number) {
     return db.loadouts.where({ characterId }).toArray();
+  }
+
+  /* =========================
+     TABS
+  ========================= */
+
+  async getTabs(): Promise<Tab[]> {
+    return db.tabs.orderBy("order").toArray();
+  }
+
+  async createTab(name: string): Promise<string> {
+    const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const count = await db.tabs.count();
+    await db.tabs.add({
+      id,
+      name,
+      order: count,
+    });
+    return id;
+  }
+
+  async deleteTab(tabId: string): Promise<void> {
+    const chars = await db.characters.where("tabId").equals(tabId).toArray();
+    for (const c of chars) {
+      await db.characters.update(c.id!, { tabId: undefined });
+    }
+    await db.tabs.delete(tabId);
+  }
+
+  async updateCharacterTab(characterId: number, tabId: string | null): Promise<void> {
+    await db.characters.update(characterId, {
+      tabId: tabId ?? undefined,
+      updatedAt: Date.now(),
+      isDirty: true,
+    });
   }
 }
 

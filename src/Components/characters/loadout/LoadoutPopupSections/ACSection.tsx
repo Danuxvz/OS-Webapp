@@ -31,28 +31,17 @@ function ACSection({ loadout, acSources, onSave }: Props) {
 
   const parseAcMeta = (raw: string | undefined): { type: ArmorType; name: string; bonus: number; text: string } => {
     const text = (raw ?? "").trim();
-    if (!text) {
-      return { type: "Custom", name: "", bonus: 1, text: "" };
-    }
-
+    if (!text) return { type: "Custom", name: "", bonus: 1, text: "" };
     const [firstLine, ...rest] = text.split(/\r?\n/);
     const effectText = rest.join("\n");
     const bonusMatch = firstLine.match(/\+(\d+)\s*$/);
     const bonus = bonusMatch ? Number(bonusMatch[1]) : 1;
-
     const titlePart = bonusMatch ? firstLine.slice(0, bonusMatch.index).trim() : firstLine.trim();
     const [firstWord, ...titleParts] = titlePart.split(/\s+/);
-
     const type = ["Lowgear", "Headgear", "Armor"].includes(firstWord)
-      ? (firstWord as "Lowgear" | "Headgear" | "Armor")
+      ? (firstWord as ArmorType)
       : "Custom";
-
-    return {
-      type,
-      name: type === "Custom" ? titlePart : titleParts.join(" ").trim(),
-      bonus,
-      text: effectText,
-    };
+    return { type, name: type === "Custom" ? titlePart : titleParts.join(" ").trim(), bonus, text: effectText };
   };
 
   const selectedAc = armorClass.enteId
@@ -100,10 +89,7 @@ function ACSection({ loadout, acSources, onSave }: Props) {
         ...loadout,
         data: {
           ...loadout.data,
-          armorClass: {
-            ...armorClass,
-            type: localType as ArmorType,
-          },
+          armorClass: { ...armorClass, type: localType as ArmorType },
         },
       });
     }
@@ -115,10 +101,7 @@ function ACSection({ loadout, acSources, onSave }: Props) {
         ...loadout,
         data: {
           ...loadout.data,
-          armorClass: {
-            ...armorClass,
-            name: localName,
-          },
+          armorClass: { ...armorClass, name: localName },
         },
       });
     }
@@ -131,10 +114,7 @@ function ACSection({ loadout, acSources, onSave }: Props) {
         ...loadout,
         data: {
           ...loadout.data,
-          armorClass: {
-            ...armorClass,
-            bonus: num,
-          },
+          armorClass: { ...armorClass, bonus: num },
         },
       });
     }
@@ -146,10 +126,7 @@ function ACSection({ loadout, acSources, onSave }: Props) {
         ...loadout,
         data: {
           ...loadout.data,
-          armorClass: {
-            ...armorClass,
-            text: localText,
-          },
+          armorClass: { ...armorClass, text: localText },
         },
       });
     }
@@ -225,24 +202,20 @@ function ACSection({ loadout, acSources, onSave }: Props) {
       </div>
 
       <div className="small text-muted mb-2">
-        Click one ente to equip it. Clicking the same one again restores the metadata default.
+        Click one ente to equip it.
       </div>
 
       <div className="he-grid">
         {acSources.map((source) => {
           const active = armorClass.enteId === source.enteId;
           const parsed = parseAcMeta(source.text);
-
           return (
             <div
               key={source.enteId}
               className={`he-card ${active ? "active" : ""}`}
               onClick={() => {
-                if (active) {
-                  clearAc();
-                } else {
-                  applyAc(source);
-                }
+                if (active) clearAc();
+                else applyAc(source);
               }}
             >
               <div className="he-image-wrapper">
@@ -252,7 +225,6 @@ function ACSection({ loadout, acSources, onSave }: Props) {
                   <div className="he-placeholder">No img</div>
                 )}
               </div>
-
               <div className="he-text">
                 <b>
                   {parsed.type} {parsed.name} +{parsed.bonus}

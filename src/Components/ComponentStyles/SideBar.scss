@@ -40,11 +40,11 @@
   align-items: center;
 }
 
-.character-list{
-    flex: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scrollbar-width: none;
+.character-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
 }
 
 .burger-btn {
@@ -255,7 +255,6 @@ body:not(.sidebar-hidden) .main {
 .character-body {
   max-height: 0;
   overflow: hidden;
-  // transition: max-height 0.3s ease;
   transition: opacity 120ms ease, transform 120ms ease, max-height 120ms ease;
 }
 
@@ -383,7 +382,7 @@ body:not(.sidebar-hidden) .main {
     z-index: 1000;
     transform: translateX(0);
   }
-  
+
   .sidebar-top {
     padding: 10px !important;
   }
@@ -399,3 +398,60 @@ body:not(.sidebar-hidden) .main {
   }
 }
 
+/* ============================
+   TABS (UPDATED)
+============================ */
+.sidebar-tabs {
+  display: flex;
+  align-items: stretch;          /* make buttons fill height */
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 0;
+  border-bottom: none;           /* ← remove bottom border */
+  margin-bottom: 0.5rem;
+  gap: 0;                       /* side by side with no gap */
+}
+
+.sidebar-tab {
+  background: transparent;
+  border: none;
+  color: #bbb;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  border-radius: 0;             /* rectangular */
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  transition: background 0.2s ease, color 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+  }
+
+  &.active {
+    background-color: #6200ea;   /* purple selected */
+    color: #fff;
+    font-weight: 600;
+  }
+}
+
+.sidebar-tab.tab-add {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.character-tab-select {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.character-tab-select select {
+  background: #222;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+}

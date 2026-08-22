@@ -1,7 +1,6 @@
-// CharacterDetails.tsx
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import type { MouseEvent } from "react";
-import type { Character } from "../characters/database/db";
+import type { Character, Tab } from "../characters/database/db";
 import { characterManager } from "../characters/CharacterManager";
 import { deleteRemoteCharacter } from "../../services/Sync.tsx";
 
@@ -9,6 +8,8 @@ interface Props {
   character: Character;
   isActive: boolean;
   onSelect: () => void;
+  tabs?: Tab[];
+  onMoveToTab?: (characterId: number, tabId: string | null) => void;
 }
 
 type StatKey = "hp" | "atk" | "slots";
@@ -17,6 +18,8 @@ const CharacterDetails = React.memo(function CharacterDetails({
   character,
   isActive,
   onSelect,
+  tabs = [],
+  onMoveToTab,
 }: Props) {
   const [localChar, setLocalChar] = useState<Character>(character);
   const [nameDraft, setNameDraft] = useState(character.charName || "");
@@ -30,7 +33,7 @@ const CharacterDetails = React.memo(function CharacterDetails({
     localCharRef.current = localChar;
   }, [localChar]);
 
-  // 🔁 Only reset when the character identity or key fields change
+  // Only reset when the character identity or key fields change
   useEffect(() => {
     setLocalChar(character);
     setNameDraft(character.charName || "");
@@ -130,7 +133,6 @@ const CharacterDetails = React.memo(function CharacterDetails({
   async function updateTempStat(stat: StatKey, value: number) {
     const updatedTemp = { ...localChar.tempStatBonus, [stat]: value };
 
-    // Optimistic UI update
     setLocalChar({ ...localChar, tempStatBonus: updatedTemp });
 
     await characterManager.updateCharacter(character.id!, {
@@ -153,6 +155,9 @@ const CharacterDetails = React.memo(function CharacterDetails({
     );
   }
 
+  /* =========================
+     TOTAL STATS
+  ========================= */
   const totalStats = useMemo(() => {
     return {
       hp: localChar.baseStats.hp + sumBonus("hp") + localChar.tempStatBonus.hp,
@@ -182,8 +187,18 @@ const CharacterDetails = React.memo(function CharacterDetails({
   }
 
   /* =========================
-     RENDER
+     Tab Management
   ========================= */
+  const isMainTab = Boolean(character.externalId && !character.tabId);
+
+  const handleTabChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    const newTabId = value === "main" || value === "npc" ? null : value;
+    if (onMoveToTab) {
+      await onMoveToTab(character.id!, newTabId);
+    }
+  };
+
   return (
     <div className={`character-accordion ${isActive ? "active" : ""}`}>
       <div
@@ -233,6 +248,22 @@ const CharacterDetails = React.memo(function CharacterDetails({
             }
           }}
         />
+
+        {!isMainTab && (
+          <div className="character-tab-select">
+            <label>Group:</label>
+            <select
+              value={character.tabId ?? (character.externalId ? "main" : "npc")}
+              onChange={handleTabChange}
+            >
+              <option value="main">Main</option>
+              <option value="npc">NPC</option>
+              {tabs.map(tab => (
+                <option key={tab.id} value={tab.id}>{tab.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {(["hp", "atk", "slots"] as StatKey[]).map((stat) => (
           <div key={stat} className="stats">

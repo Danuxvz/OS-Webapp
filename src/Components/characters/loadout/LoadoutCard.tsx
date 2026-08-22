@@ -15,9 +15,11 @@ interface Props {
   atkSources: LoadoutHpSource[];
   weaponSources: LoadoutWeaponSource[];
   heSources: LoadoutHeSource[];
+  aeSources: LoadoutHeSource[];
   acSources: LoadoutACSource[];
   slotSources: LoadoutSlotSource[];
   slotCardSources: { cardId: string; name: string; image?: string; amount: number }[];
+  isNpcMode?: boolean;
   onUpdate: (loadout: Loadout) => void;
   onDelete: (loadout: Loadout) => void;
 }
@@ -28,33 +30,33 @@ function LoadoutCard({
   atkSources,
   weaponSources,
   heSources,
+  aeSources,
   acSources,
   slotSources,
   slotCardSources,
+  isNpcMode = false,
   onUpdate,
   onDelete,
 }: Props) {
   const [popupSection, setPopupSection] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
 
-  // Local state for editable fields to prevent cursor jumps
   const [localName, setLocalName] = useState(loadout.name);
   const [localHpCurrent, setLocalHpCurrent] = useState(
     String(loadout.data.hp?.baseCurrent ?? 0)
   );
-  const [localBarrierAmounts, setLocalBarrierAmounts] = useState<
-    Record<string, string>
-  >(() => {
-    const barriers = loadout.data.hp?.barriers ?? [];
-    const map: Record<string, string> = {};
-    barriers.forEach((b) => {
-      map[b.id] = String(b.amount);
-    });
-    return map;
-  });
+  const [localBarrierAmounts, setLocalBarrierAmounts] = useState<Record<string, string>>(
+    () => {
+      const barriers = loadout.data.hp?.barriers ?? [];
+      const map: Record<string, string> = {};
+      barriers.forEach((b) => {
+        map[b.id] = String(b.amount);
+      });
+      return map;
+    }
+  );
   const [localNotes, setLocalNotes] = useState(loadout.data.notes ?? "");
 
-  // Sync local state only when switching to a different loadout (not on every render)
   useEffect(() => {
     setLocalName(loadout.name);
     setLocalHpCurrent(String(loadout.data.hp?.baseCurrent ?? 0));
@@ -114,6 +116,11 @@ function LoadoutCard({
   };
   const notes = loadout.data.notes ?? "";
 
+  // Custom HEs and Activas
+  const customHE = loadout.data.customHE ?? [];
+  const customActivas = loadout.data.habilidadesActivas ?? [];
+  const activeAEIds = loadout.data.activeAEIds ?? [];
+
   const enabledHpBonus = (hp.sources ?? [])
     .filter((s) => s.enabled)
     .reduce((sum, s) => sum + (s.bonus || 0), 0);
@@ -138,13 +145,45 @@ function LoadoutCard({
 
   const weaponDetails = [weapon.size, weapon.element].filter(Boolean).join(" · ");
 
-  const selectedHE = heSources
+  // HE display
+  const customSelectedHE = customHE
+    .filter((c) => he.selectedIds.includes(c.id))
+    .map((c) => ({
+      enteId: c.id,
+      firstLine: c.name,
+      restLines: c.text,
+      image: c.image || "",
+    }));
+
+  const regularSelectedHE = heSources
     .filter((s) => he.selectedIds.includes(s.enteId))
     .map((s) => ({
-      ...s,
+      enteId: s.enteId,
       firstLine: s.text.split("\n")[0],
       restLines: s.text.split("\n").slice(1).join("\n"),
+      image: s.image,
     }));
+
+  const selectedHE = [...customSelectedHE, ...regularSelectedHE];
+
+  // Activas display
+  const selectedCustomActivas = customActivas.map((a) => ({
+    id: a.id,
+    name: a.name,
+    restText: a.text,
+    image: "",
+  }));
+
+  const selectedAEActivas = aeSources
+    .filter((s) => activeAEIds.includes(s.enteId))
+    .map((s) => ({
+      id: s.enteId,
+      name: s.text.split("\n")[0] || s.name,
+      restText: s.text.split("\n").slice(1).join("\n"),
+      image: s.image,
+    }));
+
+  const selectedActivas = [...selectedCustomActivas, ...selectedAEActivas];
 
   const acLines = (armorClass.text || "").split("\n");
   const acTitleLine = acLines[0] || "";
@@ -211,7 +250,6 @@ function LoadoutCard({
     }
   };
 
-  // ---------- Barriers helpers ----------
   const barriers = hp.barriers ?? [];
 
   const updateHp = (nextHp: typeof hp) => {
@@ -311,7 +349,6 @@ function LoadoutCard({
 
         {/* HP section */}
         <div className="mb-2">
-          {/* Red HP bar */}
           <div className="progress mb-2" style={{ height: "0.7rem" }}>
             <div
               className="progress-bar"
@@ -319,7 +356,6 @@ function LoadoutCard({
             />
           </div>
 
-          {/* Blue barrier bars */}
           {barriers.length > 0 && (
             <div className="mt-1">
               {barriers.map((barrier) => {
@@ -338,7 +374,6 @@ function LoadoutCard({
             </div>
           )}
 
-          {/* HP current/max row + barrier inputs inline */}
           <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
             <span className="fw-semibold">HP:</span>
             <input
@@ -350,7 +385,6 @@ function LoadoutCard({
             />
             <span className="text-muted">/ {totalHP}</span>
 
-            {/* Config button for HP popup */}
             {configOpen && (
               <button
                 className="btn btn-link btn-sm p-0"
@@ -360,7 +394,6 @@ function LoadoutCard({
               </button>
             )}
 
-            {/* Barrier amount inputs (always visible) */}
             {barriers.map((barrier) => (
               <div key={barrier.id} className="d-flex align-items-center gap-1">
                 <input
@@ -371,7 +404,6 @@ function LoadoutCard({
                   onChange={(e) => handleBarrierLocalChange(barrier.id, e.target.value)}
                   onBlur={() => commitBarrier(barrier.id)}
                 />
-                {/* Delete button only in config mode */}
                 {configOpen && (
                   <button
                     className="btn btn-outline-danger btn-sm"
@@ -452,7 +484,7 @@ function LoadoutCard({
           </div>
         </div>
 
-        {/* AC Display with effect */}
+        {/* AC Display */}
         <div className="mb-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <span className="fw-semibold">Armor Class:</span>
@@ -466,7 +498,6 @@ function LoadoutCard({
               </button>
             )}
           </div>
-
           {armorClass.text && (
             <div className="small text-muted mt-1">
               {acEffectText || acTitleLine}
@@ -474,50 +505,80 @@ function LoadoutCard({
           )}
         </div>
 
-        {/* Slots display */}
-        <div className="mb-2">
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="fw-semibold">Slots:</span>
-            <span>
-              {Math.max(0, totalSlots - usedSlots)} / {totalSlots}
-            </span>
-            {configOpen && (
-              <button
-                className="btn btn-link btn-sm p-0"
-                onClick={() => setPopupSection("slots")}
-              >
-                ⚙
-              </button>
+        {/* Slots display – hidden in NPC mode */}
+        {!isNpcMode && (
+          <div className="mb-2">
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <span className="fw-semibold">Slots:</span>
+              <span>
+                {Math.max(0, totalSlots - usedSlots)} / {totalSlots}
+              </span>
+              {configOpen && (
+                <button
+                  className="btn btn-link btn-sm p-0"
+                  onClick={() => setPopupSection("slots")}
+                >
+                  ⚙
+                </button>
+              )}
+            </div>
+            {slotBoxItems.length > 0 && (
+              <div className="slot-grid mt-2">
+                {slotBoxItems.map((item) => {
+                  const cardMeta = slotCardSources.find(
+                    (c) => c.cardId === item.cardId
+                  );
+                  return (
+                    <div
+                      key={`${item.cardId}-${item.index}`}
+                      className={`slot-box ${item.used ? "used" : ""}`}
+                      onClick={() => handleToggleSlot(item.cardId, item.index)}
+                    >
+                      {cardMeta?.image && (
+                        <img
+                          src={cardMeta.image}
+                          alt={cardMeta.name}
+                          className="slot-box-img"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
+        )}
 
-          {slotBoxItems.length > 0 && (
-            <div className="slot-grid mt-2">
-              {slotBoxItems.map((item) => {
-                const cardMeta = slotCardSources.find(
-                  (c) => c.cardId === item.cardId
-                );
-
-                return (
-                  <div
-                    key={`${item.cardId}-${item.index}`}
-                    className={`slot-box ${item.used ? "used" : ""}`}
-                    onClick={() => handleToggleSlot(item.cardId, item.index)}
-                  >
-                    {cardMeta?.image && (
-                      <img
-                        src={cardMeta.image}
-                        alt={cardMeta.name}
-                        className="slot-box-img"
-                      />
-                    )}
-                  </div>
-                );
-              })}
+        {/* Habilidades Activas (NPC only) */}
+        {isNpcMode && (
+          <div className="mb-2">
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <span className="fw-semibold">Habilidades Activas:</span>
+              {configOpen && (
+                <button
+                  className="btn btn-link btn-sm p-0"
+                  onClick={() => setPopupSection("activas")}
+                >
+                  ⚙
+                </button>
+              )}
             </div>
-          )}
-        </div>
+            <div className="mt-2">
+              {selectedActivas.length === 0 ? (
+                <span className="text-muted small">None</span>
+              ) : (
+                selectedActivas.map((s) => (
+                  <div key={s.id} className="he-card-inline mb-1">
+                    <b>{s.name}</b>
+                    {s.restText && <div className="small text-muted">{s.restText}</div>}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
+        {/* Notes */}
         <div className="mt-2 pt-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <span className="fw-semibold">Notes:</span>
@@ -538,8 +599,8 @@ function LoadoutCard({
           )}
         </div>
 
-        {/* Delete button (only in config mode) */}
-        {configOpen && (
+        {/* Delete button (only in config mode AND not NPC mode) */}
+        {configOpen && !isNpcMode && (
           <div className="mt-3 d-flex justify-content-end">
             <button
               className="btn btn-outline-danger btn-sm"
@@ -558,9 +619,11 @@ function LoadoutCard({
             atkSources={atkSources}
             weaponSources={weaponSources}
             heSources={heSources}
+            aeSources={aeSources}
             acSources={acSources}
             slotSources={slotSources}
             slotCardSources={slotCardSources}
+            isNpcMode={isNpcMode}
             onClose={() => setPopupSection(null)}
             onSave={onUpdate}
           />

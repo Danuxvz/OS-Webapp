@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import type { Character } from '../characters/database/db';
+import { useState, useEffect, useMemo } from "react";
+import type { Character, Tab } from '../characters/database/db';
 import CharacterDetails from "./CharacterDetails.tsx";
 import { refreshMetadata } from '../../services/enteMetadataService.ts';
 import { characterManager } from '../characters/CharacterManager';
@@ -20,7 +20,14 @@ interface SidebarProps {
   setCharacters: React.Dispatch<React.SetStateAction<Character[]>>;
   activeCharacterId: number | null;
   setActiveCharacterId: React.Dispatch<React.SetStateAction<number | null>>;
+  activeTabId: string;
+  setActiveTabId: React.Dispatch<React.SetStateAction<string>>;
 }
+
+const BUILTIN_TABS = [
+  { id: "main", name: "Main", isBuiltin: true },
+  { id: "npc", name: "NPC", isBuiltin: true },
+];
 
 function ControlPanel({
   sidebarHidden,
@@ -28,14 +35,14 @@ function ControlPanel({
   characters,
   setCharacters,
   activeCharacterId,
-  setActiveCharacterId
+  setActiveCharacterId,
+  activeTabId,
+  setActiveTabId,
 }: SidebarProps) {
 
   const [discordUser, setDiscordUser] = useState<DiscordUser | null>(null);
+  const [tabs, setTabs] = useState<Tab[]>([]);
 
-  /* =========================
-     FETCH LOGGED IN DISCORD USER
-  ========================= */
   useEffect(() => {
     async function fetchUser() {
       const user = await getLoggedInDiscordUser();
@@ -44,38 +51,66 @@ function ControlPanel({
     fetchUser();
   }, []);
 
-  /* =========================
-     CHARACTER SELECTION (close‑before‑open)
-  ========================= */
-  const selectCharacter = (id: number) => {
-    if (id === activeCharacterId) return;
+  useEffect(() => {
+    async function loadTabs() {
+      const custom = await characterManager.getTabs();
+      setTabs(custom);
+    }
+    loadTabs();
+  }, []);
 
-    // Close current card first
-    setActiveCharacterId(null);
+  const filteredCharacters = useMemo(() => {
+    if (activeTabId === "main") {
+      return characters.filter(c => !!c.externalId && !c.tabId);
+    }
+    if (activeTabId === "npc") {
+      return characters.filter(c => !c.externalId && !c.tabId);
+    }
+    return characters.filter(c => c.tabId === activeTabId);
+  }, [characters, activeTabId]);
 
-    // Open new card after the close animation completes (~120ms)
-    window.setTimeout(() => {
-      setActiveCharacterId(id);
-    }, 120);
+  const handleAddTab = async () => {
+    const name = window.prompt("Nombre de la nueva pestaña:");
+    if (!name?.trim()) return;
+    const newId = await characterManager.createTab(name.trim());
+    setTabs(prev => [...prev, { id: newId, name: name.trim(), order: prev.length }]);
+    setActiveTabId(newId);
   };
 
-  /* =========================
-     MANAGE CHARACTERS
-  ========================= */
+  const handleDeleteTab = async (tabId: string) => {
+    const confirmed = confirm("Eliminar pestaña y mover personajes a NPC?");
+    if (!confirmed) return;
+    await characterManager.deleteTab(tabId);
+    setTabs(prev => prev.filter(t => t.id !== tabId));
+    setActiveTabId("npc");
+    const updated = await characterManager.getCharactersByUser(discordUser?.id ?? "");
+    setCharacters(updated);
+  };
+
+  // ✅ Direct assignment – no null delay, no layout flash
+  const selectCharacter = (id: number) => {
+    if (id === activeCharacterId) return;
+    setActiveCharacterId(id);
+  };
+
+  const handleMoveCharacter = async (characterId: number, newTabId: string | null) => {
+    await characterManager.updateCharacterTab(characterId, newTabId);
+    setCharacters(prev => prev.map(c =>
+      c.id === characterId ? { ...c, tabId: newTabId ?? undefined } : c
+    ));
+  };
+
   const handleAddCharacter = async () => {
     const name = "New Character";
     const newCharId = await characterManager.createCharacter(discordUser?.id ?? "", name);
     const updatedChars = await characterManager.getCharactersByUser(discordUser?.id ?? "");
-
-    // Sort: external first, then web, then alphabetically
     updatedChars.sort((a, b) => {
       const aIsExternal = a.source === "external" ? 1 : 0;
       const bIsExternal = b.source === "external" ? 1 : 0;
       return bIsExternal - aIsExternal || a.charName.localeCompare(b.charName);
     });
-
     setCharacters(updatedChars);
-    selectCharacter(newCharId);   // use the delayed select
+    selectCharacter(newCharId);
   };
 
   useEffect(() => {
@@ -83,16 +118,12 @@ function ControlPanel({
       setCharacters(prev => prev.filter(c => c.id !== id));
       setActiveCharacterId(prev => prev === id ? null : prev);
     }
-
     characterManager.on("characterDeleted", handleDeleted);
     return () => {
       characterManager.off("characterDeleted", handleDeleted);
     };
   }, []);
 
-  /* =========================
-     LOGOUT HANDLER
-  ========================= */
   const handleLogout = async () => {
     await logout();
     setDiscordUser(null);
@@ -150,15 +181,46 @@ function ControlPanel({
         </div>
       </div>
 
+      {/* TABS */}
+      <div className="sidebar-tabs">
+        {BUILTIN_TABS.map(tab => (
+          <button
+            key={tab.id}
+            className={`sidebar-tab ${activeTabId === tab.id ? "active" : ""}`}
+            onClick={() => setActiveTabId(tab.id)}
+          >
+            {tab.name}
+          </button>
+        ))}
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            className={`sidebar-tab ${activeTabId === tab.id ? "active" : ""}`}
+            onClick={() => setActiveTabId(tab.id!)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              handleDeleteTab(tab.id!);
+            }}
+          >
+            {tab.name}
+          </button>
+        ))}
+        <button className="sidebar-tab tab-add" onClick={handleAddTab} title="Nueva pestaña">
+          +
+        </button>
+      </div>
+
       {/* CHARACTER LIST */}
       <div className="sidebar-bottom p-3">
         <div className="character-list">
-          {characters.map((char) => (
+          {filteredCharacters.map((char) => (
             <CharacterDetails
               key={char.id}
               character={char}
               isActive={char.id === activeCharacterId}
               onSelect={() => selectCharacter(char.id!)}
+              tabs={tabs}
+              onMoveToTab={handleMoveCharacter}
             />
           ))}
 
