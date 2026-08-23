@@ -185,7 +185,7 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
     if (!character) return [];
 
     const eligible = entes.filter(
-      (e) => (e.unlockLevel ?? 0) >= 2 && isEnteId(e.enteID)
+      (e) => (e.unlockLevel ?? 0) >= 1 && isEnteId(e.enteID)
     );
 
     return Promise.all(

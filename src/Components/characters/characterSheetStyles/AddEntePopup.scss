@@ -1,0 +1,290 @@
+/* ============================
+   ADD ENTE POPUP
+============================ */
+
+.add-ente-popup {
+  width: min(900px, 95vw);
+  height: 95vh;
+  max-height: 95vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.add-ente-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  min-height: 0;
+  flex: 1;
+}
+
+/* ---------- Cart (top, fixed proportion) ---------- */
+.add-ente-cart-section {
+  flex: 0 0 40%; 
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2b2b2b;
+  border-radius: 8px;
+  padding: 12px;
+  background: #141414;
+  overflow: hidden;
+}
+
+.add-ente-cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.add-ente-cart-empty {
+  color: #888;
+  font-size: 0.9rem;
+  padding: 12px;
+  background: #161616;
+  border: 1px dashed #333;
+  border-radius: 8px;
+}
+
+.add-ente-committed-msg {
+  color: #7CFC9C;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.add-ente-cart-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Smaller text in cart ente cards */
+.add-ente-cart-list .grid-slot strong {
+  font-size: 0.8rem;
+}
+
+.add-ente-cart-list .skill-body {
+  font-size: 0.7rem;
+}
+
+.add-ente-cart-list .grid-slot {
+  font-size: 0.7rem;
+}
+
+.add-ente-cart-unlock {
+  font-size: 0.7rem;
+  color: #aaa;
+  text-align: center;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+
+.add-ente-cart-item .ente-thumb {
+  max-width: 100px;
+  width: auto;
+  max-height: 200px;
+  margin-top: 6px;
+  margin-right: 6px;
+}
+
+.add-ente-cart-item .ente-right {
+  flex: 1 1 0%;
+  min-width: 0;
+  margin-top: 0;
+}
+
+/* The regular ente list swaps to a nested .mobile-left wrapper below
+   768px, and the global mobile rules (.ente-actions { width: 100% } etc.)
+   are written against that structure. The cart list never adopts that
+   nested layout — it's always the flat actions/left/right row — so those
+   global rules were fighting this file at narrow viewports and squashing
+   .ente-right down to its content size. Pin the flat layout unconditionally
+   here, at higher specificity than both the base rules and the @media ones. */
+.add-ente-cart-item .ente-top-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.add-ente-cart-item .ente-actions {
+  display: grid;
+  grid-template-columns: 1.2fr;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.add-ente-cart-item .ente-left {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+
+/* ---------- Browse (bottom) ---------- */
+.add-ente-browse-section {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid #2b2b2b;
+  border-radius: 8px;
+  padding: 12px;
+  background: #141414;
+}
+
+.add-ente-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.add-ente-filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.add-ente-filter-group-right {
+  margin-left: auto;
+}
+
+.add-ente-filter-label {
+  font-size: 0.85rem;
+  color: #ccc;
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+/* Larger filter buttons */
+.add-ente-filter-btn {
+  width: 36px;
+  height: 36px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid #3a3a3a;
+  background: #1f1f1f;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  &:hover {
+    border-color: #777;
+  }
+
+  &.active {
+    border-color: #6c5ce7;
+    background: #2a2350;
+  }
+}
+
+.add-ente-filter-btn-text {
+  width: auto;
+  min-width: 42px;
+  height: 36px;
+  padding: 4px 10px;
+  font-size: 0.9rem;
+  color: #ddd;
+}
+
+/* Gallery scroll area, visually connected to filters */
+.add-ente-browse-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  border-top: 1px solid #2b2b2b;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.add-ente-gallery-card {
+  position: relative;
+}
+
+.add-ente-gallery-id {
+  font-size: 0.65rem;
+  color: #999;
+  margin-top: 3px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.add-ente-gallery-card.in-cart {
+  border-color: #6c5ce7;
+}
+
+.add-ente-in-cart-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: #6c5ce7;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.add-ente-sentinel {
+  width: 100%;
+  height: 1px;
+}
+
+.add-ente-loading {
+  color: #888;
+  padding: 12px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .add-ente-popup {
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .add-ente-cart-section {
+    flex-basis: 35%;
+  }
+
+  .add-ente-text-filter {
+    width: 100%;
+  }
+
+  .add-ente-filter-label {
+    min-width: 100%;
+    margin-bottom: 4px;
+  }
+
+  .add-ente-filter-group-right {
+    margin-left: 0;
+  }
+
+  .add-ente-filter-btn,
+  .add-ente-filter-btn-text {
+    width: 40px;
+    height: 40px;
+  }
+
+  .add-ente-filter-btn-text {
+    width: auto;
+    min-width: 44px;
+  }
+}

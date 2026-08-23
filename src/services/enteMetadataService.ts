@@ -28,6 +28,10 @@ export interface EnteMetadata {
   HE: string;
   AC: string;
   image: string;
+  // True only if this id actually has a row in one of the Ranks sheets
+  // (RANGOS C/D/E) — a base-sheet-only entry (no rank row at all) is
+  // NOT eligible to show up in the "add ente" browser.
+  inRanksSheet: boolean;
 }
 
 interface BaseRow {
@@ -255,7 +259,8 @@ async function _buildMetadataIndexInner(): Promise<Record<string, EnteMetadata>>
       SB: rankRow?.SB ?? "",
       HE: rankRow?.HE ?? "",
       AC: rankRow?.AC ?? "",
-      image: getLocalImageUrl(base.id, rank)
+      image: getLocalImageUrl(base.id, rank),
+      inRanksSheet: !!rankRow
     };
   });
 
@@ -276,7 +281,8 @@ async function _buildMetadataIndexInner(): Promise<Record<string, EnteMetadata>>
 				SB: rankRow.SB ?? "",
 				HE: rankRow.HE ?? "",
 				AC: rankRow.AC ?? "",
-				image: getLocalImageUrl(rankRow.id, rank)
+				image: getLocalImageUrl(rankRow.id, rank),
+				inRanksSheet: true
 			};
 
 		});

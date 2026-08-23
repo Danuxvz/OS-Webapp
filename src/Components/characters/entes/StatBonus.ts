@@ -69,7 +69,6 @@ export class StatBonusEngine {
   parseSB(sbText?: string): StatBlock {
     if (!sbText) return { hp: 0, atk: 0, slots: 0 };
 
-    // Normalise Spanish words to explicit + / -
     let text = sbText.toLowerCase();
     text = text.replace(/\b(?:suma|añade)\s*\+?/gi, "+");
     text = text.replace(/\b(?:resta|disminuye)\s*\-?/gi, "-");

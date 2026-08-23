@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import type { Ente } from "../../../types";
 import EnteCard from "./EnteCard";
+import AddEntePopup from "./AddEntePopup";
 import { characterManager } from "../CharacterManager";
 import { getEnteMetadata } from "../../../services/enteMetadataService";
 import { db } from "../database/db";
@@ -28,7 +29,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
   const suppressReloadRef = useRef(0);
   const mountedRef = useRef(true);
 
-  // ----- Load lock to prevent infinite loops on mobile with many entes -----
   const isLoadingRef = useRef(false);
   const needsReloadRef = useRef(false);
 
@@ -44,14 +44,11 @@ function EntesSection({ characterId }: EntesSectionProps) {
     E005: "E005A",
     E060: "E060A",
     E052: "E052A",
-    // E123: "E123A",
   };
 
   function getSpecialBase(id: string): string | null {
     for (const base of Object.keys(SPECIAL_VARIANT_BASES)) {
-      if (id.startsWith(base)) {
-        return base;
-      }
+      if (id.startsWith(base)) return base;
     }
     return null;
   }
@@ -62,7 +59,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
       return;
     }
 
-    // Prevent concurrent loads – queue a retry if one is already running
     if (isLoadingRef.current) {
       needsReloadRef.current = true;
       return;
@@ -118,9 +114,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
             favorite: e.favorite ?? false,
             notes: e.notes ?? "",
             customImage: e.customImage ?? "",
-            order: typeof e.order === "number"
-              ? e.order
-              : Number.MAX_SAFE_INTEGER,
+            order: typeof e.order === "number" ? e.order : Number.MAX_SAFE_INTEGER,
           } as Ente;
         })
       );
@@ -161,7 +155,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
         setLoading(false);
       }
 
-      // If a reload was requested while we were busy, do it now
       if (needsReloadRef.current && mountedRef.current) {
         needsReloadRef.current = false;
         setTimeout(() => loadEntes(), 0);
@@ -169,7 +162,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
   }
 
-  // 🔁 Reset everything when character changes
   useEffect(() => {
     mountedRef.current = true;
     setEntes([]);
@@ -199,18 +191,13 @@ function EntesSection({ characterId }: EntesSectionProps) {
       characterManager.off("enteUpdated", handler);
       characterManager.off("bonusUpdated", handler);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterId]);
 
   async function updateEnte(updated: Ente) {
     if (!characterId) return;
 
-    // Update local state immediately
     setEntes((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
 
-    // Compare against current stored ente and skip if nothing meaningful changed.
-    // This prevents EnteCard's initial mount from writing the same data and
-    // triggering enteUpdated → loadEntes → mount → ... infinite reload.
     const existing = entes.find((e) => e.id === updated.id);
     if (existing) {
       const hasChanges =
@@ -236,33 +223,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
   }
 
-  function AddEnteForm({
-    onAdd,
-    onCancel,
-  }: {
-    onAdd: (id: string) => void;
-    onCancel: () => void;
-  }) {
-    const [id, setId] = useState("");
-
-    return (
-      <div className="add-ente-modal">
-        <input
-          className="enteFilter"
-          placeholder="Enter Ente ID..."
-          value={id}
-          onChange={(e) => setId(e.target.value)}
-        />
-        <button className="modal-btn" onClick={() => onAdd(id)}>
-          ✔
-        </button>
-        <button className="modal-btn" onClick={onCancel}>
-          ✖
-        </button>
-      </div>
-    );
-  }
-
   const filteredAndSorted = useMemo(() => {
     let list = [...entes];
 
@@ -278,9 +238,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
     }
 
     list.sort((a: Ente, b: Ente) => {
-      if (a.favorite !== b.favorite) {
-        return a.favorite ? -1 : 1;
-      }
+      if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
 
       if (sortBy === "unlockLevel") {
         const diff = b.unlockLevel - a.unlockLevel;
@@ -292,9 +250,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
         if (diff !== 0) return diff;
       }
 
-      if (sortBy === "id") {
-        return a.id.localeCompare(b.id);
-      }
+      if (sortBy === "id") return a.id.localeCompare(b.id);
 
       const orderA = typeof a.order === "number" ? a.order : Number.MAX_SAFE_INTEGER;
       const orderB = typeof b.order === "number" ? b.order : Number.MAX_SAFE_INTEGER;
@@ -320,13 +276,9 @@ function EntesSection({ characterId }: EntesSectionProps) {
     const [removed] = updated.splice(dragIndex, 1);
     updated.splice(dropIndex, 0, removed);
 
-    const reordered = updated.map((e, i) => ({
-      ...e,
-      order: i,
-    }));
+    const reordered = updated.map((e, i) => ({ ...e, order: i }));
 
     setEntes(reordered);
-
     suppressReloadRef.current++;
 
     try {
@@ -350,15 +302,12 @@ function EntesSection({ characterId }: EntesSectionProps) {
     return (
       <div className="star-rating">
         {Array.from({ length: 5 }, (_, i) => (
-          <span key={i} className={`star ${i < stars ? "filled" : "empty"}`}>
-            ★
-          </span>
+          <span key={i} className={`star ${i < stars ? "filled" : "empty"}`}>★</span>
         ))}
       </div>
     );
   }
 
-  // Daruma randomization handler
   async function handleRandomizeDaruma(enteId: string) {
     if (!characterId) return;
     try {
@@ -386,7 +335,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
         <h2>Entes</h2>
 
         <div className="entes-controls">
-          {/* View toggle buttons */}
           <button
             className={`view-toggle ${viewMode === "list" ? "active" : ""}`}
             onClick={() => setViewMode("list")}
@@ -434,92 +382,86 @@ function EntesSection({ characterId }: EntesSectionProps) {
           />
         </div>
       </div>
+
       <div className="ente-scroll">
         {viewMode === "gallery" ? (
-          <div className="gallery-grid">
-            {filteredAndSorted.map((ente) => (
-              <Fragment key={ente.id}>
-                <div
-                  className={`gallery-card ${expandedId === ente.id ? "expanded" : ""}`}
-                  draggable={sortBy === "order"}
-                  onDragStart={(e) => {
-                    if (sortBy !== "order") return;
-                    setDraggedId(ente.id);
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragOver={(e) => {
-                    if (sortBy !== "order") return;
-                    e.preventDefault();
-                  }}
-                  onDrop={() => {
-                    if (sortBy !== "order" || !draggedId) return;
-                    reorderEntes(draggedId, ente.id);
-                    setDraggedId(null);
-                  }}
-                  onClick={() => toggleExpand(ente.id)}
-                >
-                  <div className="gallery-thumb">
-                    {ente.image ? (
-                      <img src={ente.image} alt={ente.id} />
-                    ) : (
-                      <div className="no-image">?</div>
-                    )}
+          <>
+            <div className="ente-add-static" onClick={() => setAdding(true)}>
+              + Add Ente
+            </div>
+            <div className="gallery-grid">
+              {filteredAndSorted.map((ente) => (
+                <Fragment key={ente.id}>
+                  <div
+                    className={`gallery-card ${expandedId === ente.id ? "expanded" : ""}`}
+                    draggable={sortBy === "order"}
+                    onDragStart={(e) => {
+                      if (sortBy !== "order") return;
+                      setDraggedId(ente.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragOver={(e) => {
+                      if (sortBy !== "order") return;
+                      e.preventDefault();
+                    }}
+                    onDrop={() => {
+                      if (sortBy !== "order" || !draggedId) return;
+                      reorderEntes(draggedId, ente.id);
+                      setDraggedId(null);
+                    }}
+                    onClick={() => toggleExpand(ente.id)}
+                  >
+                    <div className="gallery-thumb">
+                      {ente.image ? (
+                        <img src={ente.image} alt={ente.id} />
+                      ) : (
+                        <div className="no-image">?</div>
+                      )}
+                    </div>
+                    <StarRating amount={ente.amount} />
                   </div>
-                  <StarRating amount={ente.amount} />
+
+                  {expandedId === ente.id && (
+                    <div className="gallery-detail">
+                      <EnteCard
+                        ente={ente}
+                        characterId={characterId!}
+                        onUpdate={updateEnte}
+                        onDelete={async (id) => {
+                          try {
+                            await characterManager.updateEnte(characterId, id, {
+                              isDeleted: true,
+                              amount: 0,
+                              updatedAt: Date.now(),
+                              isDirty: true,
+                            });
+                            await loadEntes();
+                          } catch (err) {
+                            console.warn("Failed to delete ente", id, err);
+                            await loadEntes();
+                          }
+                        }}
+                        computeUnlockLevel={computeUnlockLevel}
+                        hideThumbnail
+                        onRandomizeDaruma={handleRandomizeDaruma}
+                      />
+                    </div>
+                  )}
+                </Fragment>
+              ))}
+
+              {filteredAndSorted.length === 0 && entes.length > 0 && !loading && (
+                <div className="no-entes" style={{ width: "100%" }}>
+                  Ningun ente coincide con el filtro "{filter}".
                 </div>
-
-                {expandedId === ente.id && (
-                  <div className="gallery-detail">
-                    <EnteCard
-                      ente={ente}
-                      characterId={characterId!}
-                      onUpdate={updateEnte}
-                      onDelete={async (id) => {
-                        try {
-                          await characterManager.updateEnte(characterId, id, {
-                            isDeleted: true,
-                            amount: 0,
-                            updatedAt: Date.now(),
-                            isDirty: true,
-                          });
-                          await loadEntes();
-                        } catch (err) {
-                          console.warn("Failed to delete ente", id, err);
-                          await loadEntes();
-                        }
-                      }}
-                      computeUnlockLevel={computeUnlockLevel}
-                      hideThumbnail
-                      onRandomizeDaruma={handleRandomizeDaruma}
-                    />
-                  </div>
-                )}
-              </Fragment>
-            ))}
-
-            {filteredAndSorted.length === 0 && entes.length > 0 && !loading && (
-              <div className="no-entes" style={{ width: "100%" }}>
-                Ningun ente coincide con el filtro "{filter}".
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          </>
         ) : (
-          /* Original list mode */
           <ul className="ente-list">
             <li className="ente-add-static" onClick={() => setAdding(true)}>
               + Add Ente
             </li>
-            {adding && (
-              <AddEnteForm
-                onAdd={async (id) => {
-                  if (!id) return;
-                  await characterManager.addEnte(characterId, id, 1);
-                  await loadEntes();
-                  setAdding(false);
-                }}
-                onCancel={() => setAdding(false)}
-              />
-            )}
 
             {loading ? (
               <li className="ente-loading">Loading entes…</li>
@@ -576,6 +518,15 @@ function EntesSection({ characterId }: EntesSectionProps) {
           </ul>
         )}
       </div>
+
+      {adding && (
+        <AddEntePopup
+          characterId={characterId}
+          existingEntes={entes}
+          onClose={() => setAdding(false)}
+          onAdded={loadEntes}
+        />
+      )}
     </div>
   );
 }
