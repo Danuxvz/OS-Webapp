@@ -17,9 +17,7 @@ function HPSection({ loadout, hpSources, onSave }: Props) {
     barriers: [],
   };
 
-  // Local state for temp bonus (string during editing)
   const [localTempBonus, setLocalTempBonus] = useState(String(hp.tempBonus));
-  // Local state for barrier amounts
   const [localBarrierAmounts, setLocalBarrierAmounts] = useState<Record<string, string>>(() => {
     const barriers = hp.barriers ?? [];
     const map: Record<string, string> = {};
@@ -29,7 +27,6 @@ function HPSection({ loadout, hpSources, onSave }: Props) {
     return map;
   });
 
-  // Sync when loadout changes
   useEffect(() => {
     setLocalTempBonus(String(hp.tempBonus));
     const barriers = hp.barriers ?? [];
@@ -42,28 +39,17 @@ function HPSection({ loadout, hpSources, onSave }: Props) {
 
   const mergedHpSources = useMemo(() => {
     const savedMap = new Map((hp.sources ?? []).map((s) => [s.enteId, s]));
-    const merged: LoadoutHpSource[] = [];
 
-    const liveIds = new Set<string>();
-
-    for (const live of hpSources) {
+    return hpSources.map((live) => {
       const saved = savedMap.get(live.enteId);
-      liveIds.add(live.enteId);
-
-      merged.push({
+      return {
         ...live,
         enabled: saved?.enabled ?? false,
         bonus: saved?.bonus ?? live.bonus,
         name: saved?.name ?? live.name,
         image: saved?.image ?? live.image,
-      });
-    }
-
-    for (const saved of hp.sources ?? []) {
-      if (!liveIds.has(saved.enteId)) merged.push(saved);
-    }
-
-    return merged;
+      };
+    });
   }, [hp.sources, hpSources]);
 
   const saveHpSources = (nextSources: LoadoutHpSource[]) => {
@@ -87,7 +73,6 @@ function HPSection({ loadout, hpSources, onSave }: Props) {
     );
   };
 
-  // Barriers helpers
   const barriers = hp.barriers ?? [];
 
   const updateHp = (nextHp: typeof hp) => {
@@ -159,7 +144,6 @@ function HPSection({ loadout, hpSources, onSave }: Props) {
     <>
       <h3 className="h5 mb-3">Edit HP</h3>
 
-      {/* Loadout Temp Bonus */}
       <div className="mb-3">
         <label className="form-label">Loadout Temp Bonus</label>
         <input
@@ -171,7 +155,6 @@ function HPSection({ loadout, hpSources, onSave }: Props) {
         />
       </div>
 
-      {/* Barriers management */}
       <div className="mb-3">
         <div className="d-flex align-items-center justify-content-between">
           <label className="form-label mb-0">Barreras</label>
@@ -203,7 +186,6 @@ function HPSection({ loadout, hpSources, onSave }: Props) {
         ))}
       </div>
 
-      {/* Ente selection grid */}
       <div className="mb-2">
         <div className="small text-muted mb-2">
           Click an HP bonus to toggle it on or off for this loadout.

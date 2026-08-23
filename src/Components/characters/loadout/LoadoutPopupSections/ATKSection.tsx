@@ -21,29 +21,20 @@ function ATKSection({ loadout, atkSources, onSave }: Props) {
     setLocalTempBonus(String(atk.tempBonus));
   }, [loadout.id, atk.tempBonus]);
 
+  // Only show live ATK sources – stale saved sources are no longer added.
   const mergedAtkSources = useMemo(() => {
     const savedMap = new Map((atk.sources ?? []).map((s) => [s.enteId, s]));
-    const merged: LoadoutHpSource[] = [];
-    const liveIds = new Set<string>();
 
-    for (const live of atkSources) {
+    return atkSources.map((live) => {
       const saved = savedMap.get(live.enteId);
-      liveIds.add(live.enteId);
-
-      merged.push({
+      return {
         ...live,
         enabled: saved?.enabled ?? false,
         bonus: saved?.bonus ?? live.bonus,
         name: saved?.name ?? live.name,
         image: saved?.image ?? live.image,
-      });
-    }
-
-    for (const saved of atk.sources ?? []) {
-      if (!liveIds.has(saved.enteId)) merged.push(saved);
-    }
-
-    return merged;
+      };
+    });
   }, [atk.sources, atkSources]);
 
   const saveAtkSources = (nextSources: LoadoutHpSource[]) => {

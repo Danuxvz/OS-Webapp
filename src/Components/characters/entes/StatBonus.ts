@@ -63,37 +63,57 @@ export class StatBonusEngine {
   }
 
   /* -----------------------------
-     SB Parsing  (IMPROVED)
+     SB Parsing
   ------------------------------ */
 
   parseSB(sbText?: string): StatBlock {
     if (!sbText) return { hp: 0, atk: 0, slots: 0 };
 
-    // ---------- 1. Normalise ----------
+    // Normalise Spanish words to explicit + / -
     let text = sbText.toLowerCase();
-
     text = text.replace(/\b(?:suma|añade)\s*\+?/gi, "+");
     text = text.replace(/\b(?:resta|disminuye)\s*\-?/gi, "-");
 
-    // ---------- 2. Extract each stat ----------
-    const patterns: Record<StatKey, RegExp> = {
-      hp: /(?:hp|vida)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:hp|vida)/,
-      atk: /(?:atk|ataque|atq|dmg)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:atk|ataque|atq|dmg)/,
-      slots: /(?:slot|slots|ranura)\s*:?\s*([+-]?\d+)|([+-]?\d+)\s*(?:de\s+)?:?\s*(?:slot|slots|ranura)/,
-    };
-
     const result: StatBlock = { hp: 0, atk: 0, slots: 0 };
 
-    (["hp", "atk", "slots"] as StatKey[]).forEach((stat) => {
-      const match = text.match(patterns[stat]);
-      if (!match) return;
+    // Keyword maps
+    const statAliases: Record<string, StatKey> = {
+      hp: "hp",
+      vida: "hp",
+      atk: "atk",
+      ataque: "atk",
+      atq: "atk",
+      dmg: "atk",
+      slot: "slots",
+      slots: "slots",
+      ranura: "slots",
+    };
 
-      // Group 1 = keyword‑first capture, Group 2 = number‑first capture
-      const value = match[1] ?? match[2];
-      if (value) {
-        result[stat] = parseInt(value, 10);
+    // Number-first or keyword-first, global matching
+    const pattern =
+      /([+-]?\d+)\s*(?:de\s+)?:?\s*(hp|vida|atk|ataque|atq|dmg|slot|slots|ranura)|(hp|vida|atk|ataque|atq|dmg|slot|slots|ranura)\s*:?\s*([+-]?\d+)/gi;
+
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      let valueStr: string | undefined;
+      let statKey: StatKey | undefined;
+
+      // Number-first: group1 = value, group2 = stat
+      if (match[1] && match[2]) {
+        valueStr = match[1];
+        statKey = statAliases[match[2].toLowerCase()];
       }
-    });
+      // Keyword-first: group3 = stat, group4 = value
+      else if (match[3] && match[4]) {
+        statKey = statAliases[match[3].toLowerCase()];
+        valueStr = match[4];
+      }
+
+      if (statKey && valueStr !== undefined) {
+        const value = parseInt(valueStr, 10);
+        result[statKey] += value;
+      }
+    }
 
     return result;
   }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { Character, Tab } from '../characters/database/db';
 import CharacterDetails from "./CharacterDetails.tsx";
-import PromptModal from "./Promptmodal.tsx";
+import PromptModal from "./PromptModal.tsx";
 import ConfirmModal from "./ConfirmModal.tsx";
 import { refreshMetadata } from '../../services/enteMetadataService.ts';
 import { characterManager } from '../characters/CharacterManager';
@@ -136,6 +136,15 @@ function ControlPanel({
   const handleAddCharacter = async () => {
     const name = "New Character";
     const newCharId = await characterManager.createCharacter(discordUser?.id ?? "", name);
+
+    // Assign the new character to the current custom tab, if any.
+    // Built-in tabs "main" and "npc" are handled by their natural filters
+    // (main requires externalId, so a newly created web character will show
+    // in NPC until it's assigned elsewhere).
+    if (activeTabId !== "main" && activeTabId !== "npc") {
+      await characterManager.updateCharacterTab(newCharId, activeTabId);
+    }
+
     const updatedChars = await characterManager.getCharactersByUser(discordUser?.id ?? "");
     updatedChars.sort((a, b) => {
       const aIsExternal = a.source === "external" ? 1 : 0;
