@@ -21,7 +21,7 @@
 
 /* ---------- Cart (top, fixed proportion) ---------- */
 .add-ente-cart-section {
-  flex: 0 0 40%; 
+  flex: 0 0 40%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -82,7 +82,6 @@
   white-space: nowrap;
 }
 
-
 .add-ente-cart-item .ente-thumb {
   max-width: 100px;
   width: auto;
@@ -97,13 +96,6 @@
   margin-top: 0;
 }
 
-/* The regular ente list swaps to a nested .mobile-left wrapper below
-   768px, and the global mobile rules (.ente-actions { width: 100% } etc.)
-   are written against that structure. The cart list never adopts that
-   nested layout — it's always the flat actions/left/right row — so those
-   global rules were fighting this file at narrow viewports and squashing
-   .ente-right down to its content size. Pin the flat layout unconditionally
-   here, at higher specificity than both the base rules and the @media ones. */
 .add-ente-cart-item .ente-top-row {
   display: flex;
   flex-wrap: nowrap;
@@ -121,7 +113,6 @@
   flex: 0 0 auto;
   width: auto;
 }
-
 
 /* ---------- Browse (bottom) ---------- */
 .add-ente-browse-section {
@@ -252,6 +243,7 @@
   text-align: center;
 }
 
+/* ---------- Mobile: compact filters, two rows ---------- */
 @media (max-width: 768px) {
   .add-ente-popup {
     width: 100vw;
@@ -264,27 +256,48 @@
     flex-basis: 35%;
   }
 
+  /* Search input stays compact */
   .add-ente-text-filter {
-    width: 100%;
+    width: 120px;
+    flex-shrink: 0;
+  }
+
+  /* Make each filter row a single horizontal line (scroll if overflow) */
+  .add-ente-filter-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding-bottom: 2px;
+  }
+
+  .add-ente-filter-group {
+    flex-wrap: nowrap;
+    gap: 4px;
   }
 
   .add-ente-filter-label {
-    min-width: 100%;
-    margin-bottom: 4px;
+    min-width: auto;
+    margin-bottom: 0;
+    font-size: 0.7rem;
+    color: #aaa;
+  }
+
+  /* Smaller filter buttons */
+  .add-ente-filter-btn {
+    width: 28px;
+    height: 28px;
+    padding: 2px;
+    border-radius: 5px;
+  }
+
+  .add-ente-filter-btn-text {
+    min-width: 30px;
+    height: 28px;
+    padding: 2px 6px;
+    font-size: 0.7rem;
   }
 
   .add-ente-filter-group-right {
     margin-left: 0;
-  }
-
-  .add-ente-filter-btn,
-  .add-ente-filter-btn-text {
-    width: 40px;
-    height: 40px;
-  }
-
-  .add-ente-filter-btn-text {
-    width: auto;
-    min-width: 44px;
   }
 }
