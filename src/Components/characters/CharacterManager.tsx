@@ -1,3 +1,4 @@
+// CharacterManager.ts
 import { db } from "./database/db";
 import type { Character, CharacterEnte, Tab } from "./database/db";
 import { StatBonusEngine } from "./entes/StatBonus";
@@ -10,6 +11,14 @@ function createSyncMeta() {
     updatedAt: Date.now(),
     isDirty: true,
   };
+}
+
+function computeUnlockLevel(amount: number) {
+  if (amount >= 5) return 4;
+  if (amount === 4) return 3;
+  if (amount === 3) return 2;
+  if (amount === 2) return 1;
+  return 0;
 }
 
 type Listener = (payload: any) => void;
@@ -89,7 +98,7 @@ class CharacterManager {
     await db.entes.where({ characterId }).delete();
     await db.loadouts.where({ characterId }).delete();
 
-    triggerAutoSync(true);
+    triggerAutoSync();
 
     this.emit("characterDeleted", characterId);
   }
@@ -114,7 +123,7 @@ class CharacterManager {
       }
     });
 
-    triggerAutoSync(true);
+    triggerAutoSync();
 
     const entes = await this.getEntes(characterId);
     this.emit("entesUpdated", { characterId, entes });
@@ -134,7 +143,7 @@ class CharacterManager {
       updatedAt: Date.now(),
       isDirty: true,
     });
-    triggerAutoSync(true);
+    triggerAutoSync();
 
     const fresh = await this.getCharacter(characterId);
     if (fresh) this.emit("characterUpdated", fresh);
@@ -186,6 +195,7 @@ class CharacterManager {
 
       await db.entes.update(existing.id!, {
         amount: newAmount,
+        unlockLevel: computeUnlockLevel(newAmount),
         isDeleted: false,
         updatedAt: Date.now(),
         isDirty: true,
@@ -195,7 +205,7 @@ class CharacterManager {
         characterId,
         enteID,
         amount,
-        unlockLevel: 1,
+        unlockLevel: computeUnlockLevel(amount),
         favorite: false,
         order: Date.now(),
         isDeleted: false,
@@ -203,7 +213,7 @@ class CharacterManager {
       });
     }
 
-    triggerAutoSync(true);
+    triggerAutoSync();
 
     await this.recalculateCharacterBonuses(characterId);
     const entes = await this.getEntes(characterId);
@@ -223,6 +233,7 @@ class CharacterManager {
     if (newAmount === 0) {
       await db.entes.update(existing.id!, {
         amount: 0,
+        unlockLevel: 0,
         isDeleted: true,
         isDirty: true,
         updatedAt: Date.now(),
@@ -230,11 +241,12 @@ class CharacterManager {
     } else {
       await db.entes.update(existing.id!, {
         amount: newAmount,
+        unlockLevel: computeUnlockLevel(newAmount),
         isDirty: true,
         updatedAt: Date.now(),
       });
     }
-    triggerAutoSync(true);
+    triggerAutoSync();
 
     await this.recalculateCharacterBonuses(characterId);
     const entes = await this.getEntes(characterId);
@@ -255,6 +267,10 @@ class CharacterManager {
     enteID: string,
     updates: Partial<CharacterEnte>
   ) {
+    if (updates.amount !== undefined) {
+      updates.unlockLevel = computeUnlockLevel(updates.amount);
+    }
+
     await db.entes
       .where("[characterId+enteID]")
       .equals([characterId, enteID])
@@ -263,7 +279,7 @@ class CharacterManager {
         updatedAt: Date.now(),
         isDirty: true,
       });
-    triggerAutoSync(true);
+    triggerAutoSync();
 
     if (
       updates.unlockLevel !== undefined ||
@@ -337,6 +353,7 @@ class CharacterManager {
         await db.entes.update(source.id!, {
           enteID: targetEnteID,
           amount: targetAmount,
+          unlockLevel: computeUnlockLevel(targetAmount),
           updatedAt: now,
           isDirty: true,
         });
@@ -344,6 +361,7 @@ class CharacterManager {
         await db.entes.update(target.id!, {
           enteID: sourceEnteID,
           amount: sourceAmount,
+          unlockLevel: computeUnlockLevel(sourceAmount),
           updatedAt: now,
           isDirty: true,
         });
@@ -351,6 +369,7 @@ class CharacterManager {
         await db.entes.update(source.id!, {
           enteID: targetEnteID,
           amount: sourceAmount,
+          unlockLevel: computeUnlockLevel(sourceAmount),
           updatedAt: now,
           isDirty: true,
         });
@@ -389,7 +408,9 @@ class CharacterManager {
     engine.tempBonus = character.tempStatBonus;
 
     for (const ente of entes) {
-      if (ente.unlockLevel < 2) continue;
+      // ✅ Always compute unlock from current amount, not stored value
+      const effectiveUnlock = computeUnlockLevel(ente.amount ?? 0);
+      if (effectiveUnlock < 2) continue;
 
       const metadata = await getEnteMetadata(ente.enteID);
       if (!metadata) continue;
@@ -397,7 +418,7 @@ class CharacterManager {
       engine.applyEnte(
         ente.enteID,
         metadata.SB ?? "",
-        ente.unlockLevel,
+        effectiveUnlock,
         { character, entes }
       );
     }
@@ -408,7 +429,7 @@ class CharacterManager {
       isDirty: true,
     });
 
-    triggerAutoSync(true);
+    triggerAutoSync();
 
     const fresh = await this.getCharacter(characterId);
     if (fresh) this.emit("characterUpdated", fresh);
@@ -428,7 +449,7 @@ class CharacterManager {
       data,
       ...createSyncMeta(),
     });
-    triggerAutoSync(true);
+    triggerAutoSync();
     return id;
   }
 
@@ -441,7 +462,7 @@ class CharacterManager {
   ========================= */
 
   async getTabs(): Promise<Tab[]> {
-    return db.tabs.orderBy("order").filter((t) => !t.isDeleted).toArray();
+    return db.tabs.orderBy("order").toArray();
   }
 
   async createTab(name: string): Promise<string> {
@@ -452,7 +473,7 @@ class CharacterManager {
       name,
       order: count,
     });
-    triggerAutoSync(true);
+    triggerAutoSync();
     return id;
   }
 
@@ -465,11 +486,8 @@ class CharacterManager {
         isDirty: true,
       });
     }
-    // Soft-delete: a tab with a remoteId needs its remote row deleted too,
-    // which pushTabs() handles on the next sync. Deleting the local row
-    // immediately just meant the next pull brought it right back.
-    await db.tabs.update(tabId, { isDeleted: true });
-    triggerAutoSync(true);
+    await db.tabs.delete(tabId);
+    triggerAutoSync();
   }
 
   async updateCharacterTab(characterId: number, tabId: string | null): Promise<void> {
@@ -478,7 +496,7 @@ class CharacterManager {
       updatedAt: Date.now(),
       isDirty: true,
     });
-    triggerAutoSync(true);
+    triggerAutoSync();
   }
 }
 
