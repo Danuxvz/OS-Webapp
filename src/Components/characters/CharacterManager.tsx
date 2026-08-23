@@ -89,7 +89,7 @@ class CharacterManager {
     await db.entes.where({ characterId }).delete();
     await db.loadouts.where({ characterId }).delete();
 
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     this.emit("characterDeleted", characterId);
   }
@@ -114,7 +114,7 @@ class CharacterManager {
       }
     });
 
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     const entes = await this.getEntes(characterId);
     this.emit("entesUpdated", { characterId, entes });
@@ -134,7 +134,7 @@ class CharacterManager {
       updatedAt: Date.now(),
       isDirty: true,
     });
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     const fresh = await this.getCharacter(characterId);
     if (fresh) this.emit("characterUpdated", fresh);
@@ -203,7 +203,7 @@ class CharacterManager {
       });
     }
 
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     await this.recalculateCharacterBonuses(characterId);
     const entes = await this.getEntes(characterId);
@@ -234,7 +234,7 @@ class CharacterManager {
         updatedAt: Date.now(),
       });
     }
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     await this.recalculateCharacterBonuses(characterId);
     const entes = await this.getEntes(characterId);
@@ -263,7 +263,7 @@ class CharacterManager {
         updatedAt: Date.now(),
         isDirty: true,
       });
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     if (
       updates.unlockLevel !== undefined ||
@@ -408,7 +408,7 @@ class CharacterManager {
       isDirty: true,
     });
 
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     const fresh = await this.getCharacter(characterId);
     if (fresh) this.emit("characterUpdated", fresh);
@@ -428,7 +428,7 @@ class CharacterManager {
       data,
       ...createSyncMeta(),
     });
-    triggerAutoSync();
+    triggerAutoSync(true);
     return id;
   }
 
@@ -452,7 +452,7 @@ class CharacterManager {
       name,
       order: count,
     });
-    triggerAutoSync();
+    triggerAutoSync(true);
     return id;
   }
 
@@ -469,7 +469,7 @@ class CharacterManager {
     // which pushTabs() handles on the next sync. Deleting the local row
     // immediately just meant the next pull brought it right back.
     await db.tabs.update(tabId, { isDeleted: true });
-    triggerAutoSync();
+    triggerAutoSync(true);
   }
 
   async updateCharacterTab(characterId: number, tabId: string | null): Promise<void> {
@@ -478,7 +478,7 @@ class CharacterManager {
       updatedAt: Date.now(),
       isDirty: true,
     });
-    triggerAutoSync();
+    triggerAutoSync(true);
   }
 }
 

@@ -45,7 +45,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync();
+    triggerAutoSync(true);
 
     return { ...loadout, id: String(id) };
   },
@@ -67,7 +67,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync();
+    triggerAutoSync(true);
   },
 
   async delete(loadoutId: string): Promise<void> {
@@ -81,7 +81,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync();
+    triggerAutoSync(true);
   },
 
   async markLoadoutDeleted(loadoutId: string): Promise<void> {
@@ -100,6 +100,6 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync();
+    triggerAutoSync(true);
   },
 };
