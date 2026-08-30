@@ -372,9 +372,9 @@ body:not(.sidebar-hidden) .main {
 ============================ */
 @media (max-width: 768px) {
   .sidebar {
-    width: 45% !important;
-    max-width: 55% !important;
-    min-width: 35% !important;
+    width: 72% !important;          /* increased from 45% */
+    max-width: 85% !important;      /* increased from 55% */
+    min-width: 60% !important;      /* increased from 35% */
     height: 100vh;
     position: fixed;
     left: 0;
@@ -409,7 +409,7 @@ body:not(.sidebar-hidden) .main {
   padding: 0;
   border-bottom: none;           /* ← remove bottom border */
   margin-bottom: 0.5rem;
-  gap: 0;                       /* side by side with no gap */
+  gap: 0;                        /* side by side with no gap */
 }
 
 .sidebar-tab {
