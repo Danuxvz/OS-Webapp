@@ -1,6 +1,7 @@
-import { supabase, getRemoteUserId, getDiscordId } from "./SupaBase.ts";
+import { supabase, getRemoteUserId, getDiscordId, getLoggedInDiscordUser } from "./SupaBase.ts";
 import { db } from "../Components/characters/database/db";
 import type { Character } from "../Components/characters/database/db";
+import { getEnteMetadata } from "./enteMetadataService.ts";
 
 /* =========================
    UTIL
@@ -27,6 +28,64 @@ function parseInventoryBlob(blob: string) {
   }
 
   return result;
+}
+
+/* =========================
+   DEFAULT LOADOUT DATA
+========================= */
+
+function createDefaultLoadoutData() {
+  return {
+    hp: {
+      baseMax: 0,
+      baseCurrent: 0,
+      tempBonus: 0,
+      characterTempBonus: 0,
+      sources: [],
+      barriers: [],
+    },
+    atk: {
+      base: 0,
+      tempBonus: 0,
+      characterTempBonus: 0,
+      sources: [],
+    },
+    weapon: {
+      enteId: null,
+      name: "",
+      size: "",
+      type: "",
+      element: "",
+      damageBonus: 0,
+      image: "",
+    },
+    habilidadesPasivas: {
+      max: 2,
+      selectedIds: [],
+    },
+    armorClass: {
+      enteId: null,
+      type: "Custom",
+      name: "",
+      bonus: 1,
+      text: "",
+      image: "",
+    },
+    slots: {
+      base: 0,
+      tempBonus: 0,
+      characterTempBonus: 0,
+      sources: [],
+      cards: [],
+    },
+    notes: "",
+    customHE: [],
+    customACs: [],
+    customWeapons: [],
+    habilidadesActivas: [],
+    activeAEIds: [],
+    selectedActivaIds: [],
+  };
 }
 
 /* =========================
@@ -237,6 +296,8 @@ export async function pushLocalChanges() {
         schema_version: char.schemaVersion,
         updated_at: new Date(char.updatedAt).toISOString(),
         source: char.source ?? "web",
+        is_published: !!char.isPublished,
+        is_shared_import: !!char.isImportedShared,
       };
 
       if (char.tabId) {
@@ -355,11 +416,11 @@ export async function pushLocalChanges() {
           .from("inventory")
           .upsert(invPayload, { onConflict: "character_id" })
           .select()
-          .single();
+          .maybeSingle();
 
         if (invUpsert.error) {
           console.warn("pushLocalChanges: inventory upsert error", invUpsert.error);
-        } else if (!inv.remoteId && invUpsert.data?.id) {
+        } else if (invUpsert.data && !inv.remoteId) {
           await db.inventory.update(inv.id!, {
             remoteId: invUpsert.data.id,
           });
@@ -393,28 +454,36 @@ export async function pushLocalChanges() {
         const existingLoadouts = active.filter((l) => l.remoteId);
         const newLoadouts = active.filter((l) => !l.remoteId);
 
-        // Existing loadouts: update by id
-        if (existingLoadouts.length > 0) {
-          const existingRecords = existingLoadouts.map((l) => ({
-            id: l.remoteId,
+        const mapLoadoutToPayload = (l: any) => {
+          const data = l.data ?? createDefaultLoadoutData();
+          const payload: any = {
             character_id: remoteCharId,
             name: l.name,
-            hp: l.data.hp,
-            atk: l.data.atk,
-            weapon: l.data.weapon,
-            habilidades_pasivas: l.data.habilidadesPasivas?.selectedIds ?? [],
-            armor_class: l.data.armorClass,
-            slots: l.data.slots,
-            notes: l.data.notes ?? null,
-            custom_he: l.data.customHE ?? [],
-            custom_acs: l.data.customACs ?? [],
-            custom_weapons: l.data.customWeapons ?? [],
-            habilidades_activas: l.data.habilidadesActivas ?? [],
-            active_ae_ids: l.data.activeAEIds ?? [],
-            selected_activa_ids: l.data.selectedActivaIds ?? [],
+            hp: data.hp ?? createDefaultLoadoutData().hp,
+            atk: data.atk ?? createDefaultLoadoutData().atk,
+            weapon: data.weapon ?? createDefaultLoadoutData().weapon,
+            habilidades_pasivas: data.habilidadesPasivas?.selectedIds ?? [],
+            armor_class: data.armorClass ?? createDefaultLoadoutData().armorClass,
+            slots: data.slots ?? createDefaultLoadoutData().slots,
+            notes: data.notes ?? "",
+            custom_he: data.customHE ?? [],
+            custom_acs: data.customACs ?? [],
+            custom_weapons: data.customWeapons ?? [],
+            habilidades_activas: data.habilidadesActivas ?? [],
+            active_ae_ids: data.activeAEIds ?? [],
+            selected_activa_ids: data.selectedActivaIds ?? [],
             updated_at: new Date(l.updatedAt).toISOString(),
-          }));
+          };
 
+          if (l.remoteId) {
+            payload.id = l.remoteId;
+          }
+
+          return payload;
+        };
+
+        if (existingLoadouts.length > 0) {
+          const existingRecords = existingLoadouts.map(mapLoadoutToPayload);
           const { error } = await supabase
             .from("loadouts")
             .upsert(existingRecords, { onConflict: "id" });
@@ -428,27 +497,8 @@ export async function pushLocalChanges() {
           }
         }
 
-        // New loadouts: upsert by character_id,name to avoid duplicate-key errors
         if (newLoadouts.length > 0) {
-          const newRecords = newLoadouts.map((l) => ({
-            character_id: remoteCharId,
-            name: l.name,
-            hp: l.data.hp,
-            atk: l.data.atk,
-            weapon: l.data.weapon,
-            habilidades_pasivas: l.data.habilidadesPasivas?.selectedIds ?? [],
-            armor_class: l.data.armorClass,
-            slots: l.data.slots,
-            notes: l.data.notes ?? null,
-            custom_he: l.data.customHE ?? [],
-            custom_acs: l.data.customACs ?? [],
-            custom_weapons: l.data.customWeapons ?? [],
-            habilidades_activas: l.data.habilidadesActivas ?? [],
-            active_ae_ids: l.data.activeAEIds ?? [],
-            selected_activa_ids: l.data.selectedActivaIds ?? [],
-            updated_at: new Date(l.updatedAt).toISOString(),
-          }));
-
+          const newRecords = newLoadouts.map(mapLoadoutToPayload);
           const { data: upserted, error } = await supabase
             .from("loadouts")
             .upsert(newRecords, { onConflict: "character_id,name" })
@@ -492,41 +542,10 @@ export async function deleteRemoteCharacter(localCharId: number) {
   const charId = localChar.remoteId;
 
   try {
-    const { error: charError } = await supabase
-      .from("characters")
-      .delete()
-      .eq("id", charId);
-
-    if (charError) {
-      console.warn("Failed to delete remote character", localChar.charName, charError);
-    }
-
-    const { error: entesError } = await supabase
-      .from("entes")
-      .delete()
-      .eq("character_id", charId);
-
-    if (entesError) {
-      console.warn("Failed to delete remote entes for", localChar.charName, entesError);
-    }
-
-    const { error: invError } = await supabase
-      .from("inventory")
-      .delete()
-      .eq("character_id", charId);
-
-    if (invError) {
-      console.warn("Failed to delete remote inventory for", localChar.charName, invError);
-    }
-
-    const { error: loadoutError } = await supabase
-      .from("loadouts")
-      .delete()
-      .eq("character_id", charId);
-
-    if (loadoutError) {
-      console.warn("Failed to delete remote loadouts for", localChar.charName, loadoutError);
-    }
+    await supabase.from("characters").delete().eq("id", charId);
+    await supabase.from("entes").delete().eq("character_id", charId);
+    await supabase.from("inventory").delete().eq("character_id", charId);
+    await supabase.from("loadouts").delete().eq("character_id", charId);
 
     console.info("Deleted remote character and related data:", localChar.charName);
   } catch (err) {
@@ -613,13 +632,6 @@ export async function pullCharactersExport() {
       localChar = await db.characters.get(id);
     }
 
-    if (localChar!.externalId && localChar!.source !== "external") {
-      await db.characters.update(localChar!.id!, {
-        source: "external",
-        isDirty: true,
-      });
-    }
-
     const parsedInventory = parseInventoryBlob(exp.inventory);
 
     const localEntes = await db.entes
@@ -647,24 +659,16 @@ export async function pullCharactersExport() {
       inventory = await db.inventory.get(invId);
     }
 
-    if (!inventory!.cards) inventory!.cards = {};
-    if (!inventory!.consumables) inventory!.consumables = {};
-    if (!Array.isArray(inventory!.customItems)) inventory!.customItems = [];
-
     const normalize = (s: string) =>
-      String(s || "")
-        .toLowerCase()
-        .replace(/[\s:_\-]+/g, "");
+      String(s || "").toLowerCase().replace(/[\s:_\-]+/g, "");
 
     for (const [rawId, amount] of Object.entries(parsedInventory)) {
       const normalized = normalize(rawId);
-
       const cardMatch = CARD_IDS.find((c) => normalize(c) === normalized);
       if (cardMatch) {
         inventory!.cards[cardMatch] = amount;
         continue;
       }
-
       const consumableMatch = CONSUMABLE_IDS.find(
         (c) => normalize(c) === normalized
       );
@@ -672,7 +676,6 @@ export async function pullCharactersExport() {
         inventory!.consumables[consumableMatch] = amount;
         continue;
       }
-
       const existing = existingMap.get(rawId);
       if (existing) {
         if (existing.amount !== amount) {
@@ -705,25 +708,8 @@ export async function pullCharactersExport() {
       isDirty: true,
     });
 
-    for (const ente of localEntes) {
-      if (!parsedInventory[ente.enteID] && ente.amount !== 0) {
-        await db.entes.update(ente.id!, {
-          amount: 0,
-          updatedAt: Date.now(),
-          isDirty: true,
-        });
-      }
-    }
-
-    const newName =
-      !localChar!.charName || localChar!.charName.trim() === ""
-        ? exp.name
-        : localChar!.charName;
-
-    const newImage =
-      !localChar!.charImage || localChar!.charImage.trim() === ""
-        ? exp.image ?? ""
-        : localChar!.charImage;
+    const newName = !localChar!.charName ? exp.name : localChar!.charName;
+    const newImage = !localChar!.charImage ? exp.image ?? "" : localChar!.charImage;
 
     await db.characters.update(localChar!.id!, {
       charName: newName,
@@ -731,10 +717,6 @@ export async function pullCharactersExport() {
       updatedAt: Date.now(),
       isDirty: true,
     });
-
-    console.info(
-      `pullCharactersExport: synced character "${localChar!.charName}" with export "${exp.name}"`
-    );
   }
 }
 
@@ -776,22 +758,16 @@ async function pullRemoteEntes() {
         .where("[characterId+enteID]")
         .equals([localChar.id!, rd.ente_id])
         .first();
-      if (local && !local.isDirty) {
-        await db.entes.delete(local.id!);
-      }
+      if (local && !local.isDirty) await db.entes.delete(local.id!);
     }
 
     const activeIds = new Set(activeRemote.map(r => r.ente_id));
-
     const localAll = await db.entes
       .where("characterId")
       .equals(localChar.id!)
       .toArray();
-    const nonDeletedLocal = localAll.filter(e => !e.isDeleted);
-    for (const le of nonDeletedLocal) {
-      if (!activeIds.has(le.enteID) && !le.isDirty) {
-        await db.entes.delete(le.id!);
-      }
+    for (const le of localAll.filter(e => !e.isDeleted)) {
+      if (!activeIds.has(le.enteID) && !le.isDirty) await db.entes.delete(le.id!);
     }
 
     for (const remote of activeRemote) {
@@ -801,7 +777,6 @@ async function pullRemoteEntes() {
         .first();
 
       const remoteTime = new Date(remote.updated_at).getTime();
-
       if (!existing) {
         await db.entes.add({
           characterId: localChar.id!,
@@ -864,17 +839,16 @@ async function pullRemoteLoadouts() {
         .first();
 
       const remoteTime = new Date(remote.updated_at).getTime();
-
       const loadoutData = {
-        hp: remote.hp,
-        atk: remote.atk,
-        weapon: remote.weapon,
+        hp: remote.hp ?? createDefaultLoadoutData().hp,
+        atk: remote.atk ?? createDefaultLoadoutData().atk,
+        weapon: remote.weapon ?? createDefaultLoadoutData().weapon,
         habilidadesPasivas: {
           max: 2,
           selectedIds: remote.habilidades_pasivas ?? [],
         },
-        armorClass: remote.armor_class,
-        slots: remote.slots,
+        armorClass: remote.armor_class ?? createDefaultLoadoutData().armorClass,
+        slots: remote.slots ?? createDefaultLoadoutData().slots,
         notes: remote.notes ?? "",
         customHE: remote.custom_he ?? [],
         customACs: remote.custom_acs ?? [],
@@ -894,8 +868,9 @@ async function pullRemoteLoadouts() {
           isDeleted: false,
           isDirty: false,
         });
-      } else if (remoteTime > existing.updatedAt) {
+      } else {
         await db.loadouts.update(existing.id!, {
+          characterId: localChar.id!,
           name: remote.name,
           data: loadoutData,
           updatedAt: remoteTime,
@@ -929,7 +904,7 @@ async function pullRemoteInventories() {
       .from("inventory")
       .select("*")
       .eq("character_id", remoteChar.id)
-      .single();
+      .maybeSingle();
 
     if (!remoteInv) continue;
 
@@ -1008,6 +983,8 @@ async function pullRemoteCharacters() {
         historySum: remote.history_sum,
         schemaVersion: remote.schema_version,
         tabId: localTabId,
+        isPublished: !!remote.is_published,
+        isImportedShared: !!remote.is_shared_import,
         updatedAt: remoteTime,
         isDirty: false,
       });
@@ -1032,6 +1009,8 @@ async function pullRemoteCharacters() {
         historySum: remote.history_sum,
         schemaVersion: remote.schema_version,
         tabId: localTabId,
+        isPublished: !!remote.is_published,
+        isImportedShared: !!remote.is_shared_import,
         updatedAt: remoteTime,
         isDirty: false,
       });
@@ -1063,11 +1042,215 @@ async function pullRemoteCharacters() {
 }
 
 /* =========================
+   PROFILE
+========================= */
+
+async function pushOwnProfile() {
+  const discordId = getDiscordId();
+  if (!discordId) return;
+
+  const user = await getLoggedInDiscordUser();
+  if (!user) return;
+
+  const { error } = await supabase.from("profiles").upsert(
+    {
+      discord_id: discordId,
+      username: user.username,
+      avatar_url: user.avatarUrl,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "discord_id" }
+  );
+
+  if (error) console.warn("pushOwnProfile: failed to upsert profile", error);
+}
+
+/* =========================
+   BROWSE / IMPORT PUBLISHED NPCS
+========================= */
+
+export interface PublishedNpcSummary {
+  remoteId: string;
+  charName: string;
+  charImage: string;
+  baseStats: Character["baseStats"];
+  bonusLog: Character["bonusLog"];
+  tempStatBonus: Character["tempStatBonus"];
+  historySum: number;
+  schemaVersion: number;
+  discordId: string;
+  creatorUsername: string;
+  creatorAvatar: string;
+  originTabName: string;
+  searchText: string;
+}
+
+export async function fetchPublishedCharacters(): Promise<PublishedNpcSummary[]> {
+  const { data: chars, error } = await supabase
+    .from("characters")
+    .select("*")
+    .eq("is_published", true);
+
+  if (error || !chars || chars.length === 0) {
+    if (error) console.warn("fetchPublishedCharacters: query error", error);
+    return [];
+  }
+
+  const userIds = Array.from(new Set(chars.map((c: any) => c.user_id).filter(Boolean)));
+  const remoteIds = chars.map((c: any) => c.id);
+  const tabIds = Array.from(new Set(chars.map((c: any) => c.tab_id).filter(Boolean)));
+
+  const [{ data: userRows }, { data: tabs }, { data: loadouts }] = await Promise.all([
+    userIds.length
+      ? supabase.from("users").select("id,discord_id").in("id", userIds)
+      : Promise.resolve({ data: [] as any[] }),
+    tabIds.length
+      ? supabase.from("user_tabs").select("id,name").in("id", tabIds)
+      : Promise.resolve({ data: [] as any[] }),
+    supabase.from("loadouts").select("character_id,name,data").in("character_id", remoteIds),
+  ]);
+
+  const userIdToDiscordId = new Map((userRows ?? []).map((u: any) => [u.id, u.discord_id]));
+  const discordIds = Array.from(new Set((userRows ?? []).map((u: any) => u.discord_id).filter(Boolean)));
+
+  const { data: profiles } = discordIds.length
+    ? await supabase.from("profiles").select("*").in("discord_id", discordIds)
+    : { data: [] as any[] };
+
+  const profileMap = new Map((profiles ?? []).map((p: any) => [p.discord_id, p]));
+  const tabNameMap = new Map((tabs ?? []).map((t: any) => [t.id, t.name]));
+  const loadoutsByChar = new Map<string, any[]>();
+  for (const l of loadouts ?? []) {
+    if (!loadoutsByChar.has(l.character_id)) loadoutsByChar.set(l.character_id, []);
+    loadoutsByChar.get(l.character_id)!.push(l);
+  }
+
+  return chars.map((c: any) => {
+    const discordId = userIdToDiscordId.get(c.user_id) ?? "";
+    const profile = profileMap.get(discordId);
+    const originTabName = c.tab_id
+      ? tabNameMap.get(c.tab_id) ?? "?"
+      : c.external_id
+      ? "Main"
+      : "NPC";
+
+    const charLoadouts = loadoutsByChar.get(c.id) ?? [];
+    const searchParts: string[] = [c.char_name, originTabName, profile?.username ?? ""];
+
+    for (const l of charLoadouts) {
+      searchParts.push(l.name);
+      const data = l.data ?? {};
+      searchParts.push(data.notes ?? "");
+      searchParts.push(data.weapon?.name ?? "");
+      searchParts.push(data.weapon?.type ?? "");
+      searchParts.push(data.weapon?.element ?? "");
+      searchParts.push(data.armorClass?.name ?? "");
+      searchParts.push(data.armorClass?.text ?? "");
+
+      if (Array.isArray(data.customHE)) {
+        for (const he of data.customHE) {
+          searchParts.push(he.name ?? "");
+          searchParts.push(he.text ?? "");
+        }
+      }
+
+      if (Array.isArray(data.customACs)) {
+        for (const ac of data.customACs) {
+          searchParts.push(ac.name ?? "");
+          searchParts.push(ac.text ?? "");
+        }
+      }
+
+      if (Array.isArray(data.customWeapons)) {
+        for (const w of data.customWeapons) {
+          searchParts.push(w.name ?? "");
+          searchParts.push(w.element ?? "");
+          searchParts.push(w.damageBonus?.toString() ?? "");
+        }
+      }
+
+      if (Array.isArray(data.habilidadesActivas)) {
+        for (const ha of data.habilidadesActivas) {
+          searchParts.push(ha.name ?? "");
+          searchParts.push(ha.text ?? "");
+        }
+      }
+    }
+
+    return {
+      remoteId: c.id,
+      charName: c.char_name,
+      charImage: c.charImage,
+      baseStats: c.base_stats,
+      bonusLog: c.bonus_log,
+      tempStatBonus: c.temp_stat_bonus,
+      historySum: c.history_sum,
+      schemaVersion: c.schema_version,
+      discordId,
+      creatorUsername: profile?.username ?? "Unknown",
+      creatorAvatar: profile?.avatar_url ?? "",
+      originTabName,
+      searchText: searchParts.join(" ").toLowerCase(),
+    };
+  });
+}
+
+export async function fetchPublishedCharacterDetail(remoteCharacterId: string) {
+  const [{ data: entes }, { data: loadouts }] = await Promise.all([
+    supabase
+      .from("entes")
+      .select("*")
+      .eq("character_id", remoteCharacterId)
+      .eq("is_deleted", false),
+    supabase.from("loadouts").select("*").eq("character_id", remoteCharacterId),
+  ]);
+
+  const entesWithImages = await Promise.all((entes ?? []).map(async (e: any) => {
+    const meta = await getEnteMetadata(e.ente_id);
+    return {
+      enteID: e.ente_id,
+      amount: e.amount,
+      unlockLevel: e.unlock_level,
+      notes: e.notes ?? undefined,
+      customImage: e.custom_image ?? undefined,
+      image: e.custom_image || meta?.image || "",
+      order: e.order,
+    };
+  }));
+
+  return {
+    entes: entesWithImages,
+    loadouts: (loadouts ?? []).map((l: any) => ({
+      name: l.name,
+      data: {
+        hp: l.hp ?? createDefaultLoadoutData().hp,
+        atk: l.atk ?? createDefaultLoadoutData().atk,
+        weapon: l.weapon ?? createDefaultLoadoutData().weapon,
+        habilidadesPasivas: {
+          max: 2,
+          selectedIds: l.habilidades_pasivas ?? [],
+        },
+        armorClass: l.armor_class ?? createDefaultLoadoutData().armorClass,
+        slots: l.slots ?? createDefaultLoadoutData().slots,
+        notes: l.notes ?? "",
+        customHE: l.custom_he ?? [],
+        customACs: l.custom_acs ?? [],
+        customWeapons: l.custom_weapons ?? [],
+        habilidadesActivas: l.habilidades_activas ?? [],
+        activeAEIds: l.active_ae_ids ?? [],
+        selectedActivaIds: l.selected_activa_ids ?? [],
+      },
+    })),
+  };
+}
+
+/* =========================
    MASTER SYNC
 ========================= */
 
 export async function syncAll() {
   await deduplicateCharacters();
+  await pushOwnProfile();
   await pullTabs();
   await pullRemoteCharacters();
   await pullCharactersExport();

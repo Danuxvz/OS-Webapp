@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import type { Character, Tab } from "../characters/database/db";
 import { characterManager } from "../characters/CharacterManager";
 import { deleteRemoteCharacter } from "../../services/Sync.tsx";
+import "../ComponentStyles/PublishToggle.scss";
 
 interface Props {
   character: Character;
@@ -33,16 +34,12 @@ const CharacterDetails = React.memo(function CharacterDetails({
     localCharRef.current = localChar;
   }, [localChar]);
 
-  // Only reset when the character identity or key fields change
   useEffect(() => {
     setLocalChar(character);
     setNameDraft(character.charName || "");
     setOpenBreakdown(null);
   }, [character.id, character.updatedAt, character.charName, character.charImage]);
 
-  /* =========================
-     EVENT LISTENER (only when active)
-  ========================= */
   useEffect(() => {
     if (!isActive) return;
 
@@ -104,9 +101,6 @@ const CharacterDetails = React.memo(function CharacterDetails({
     };
   }, [isActive, character.id]);
 
-  /* =========================
-     FIELD UPDATE
-  ========================= */
   async function updateField(field: string, value: any) {
     const fresh = await characterManager.updateCharacter(character.id!, {
       [field]: value,
@@ -140,14 +134,10 @@ const CharacterDetails = React.memo(function CharacterDetails({
     });
     await characterManager.recalculateCharacterBonuses(character.id!);
 
-    // Fetch the final calculated state
     const fresh = await characterManager.getCharacter(character.id!);
     if (fresh) setLocalChar(fresh);
   }
 
-  /* =========================
-     BONUS SUM
-  ========================= */
   function sumBonus(stat: StatKey) {
     return Object.values(localChar.bonusLog?.[stat] || {}).reduce(
       (a, b) => a + b,
@@ -155,9 +145,6 @@ const CharacterDetails = React.memo(function CharacterDetails({
     );
   }
 
-  /* =========================
-     TOTAL STATS
-  ========================= */
   const totalStats = useMemo(() => {
     return {
       hp: localChar.baseStats.hp + sumBonus("hp") + localChar.tempStatBonus.hp,
@@ -166,9 +153,6 @@ const CharacterDetails = React.memo(function CharacterDetails({
     };
   }, [localChar]);
 
-  /* =========================
-     Delete Character
-  ========================= */
   async function handleDelete(e: MouseEvent) {
     e.stopPropagation();
 
@@ -186,17 +170,29 @@ const CharacterDetails = React.memo(function CharacterDetails({
     await characterManager.deleteCharacter(character.id!);
   }
 
-  /* =========================
-     Tab Management
-  ========================= */
   const isMainTab = Boolean(character.externalId && !character.tabId);
 
   const handleTabChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    const newTabId = value === "main" || value === "npc" ? null : value;
-    if (onMoveToTab) {
-      await onMoveToTab(character.id!, newTabId);
+
+    // If value is "shared" we need to set isImportedShared = true and tabId = null
+    // Otherwise, normal tab assignment.
+    if (value === "shared") {
+      if (onMoveToTab) {
+        await onMoveToTab(character.id!, null);
+      }
+    } else {
+      const newTabId = value === "main" || value === "npc" ? null : value;
+      if (onMoveToTab) {
+        await onMoveToTab(character.id!, newTabId);
+      }
     }
+  };
+
+  const togglePublished = async (e: MouseEvent) => {
+    e.stopPropagation();
+    const fresh = await characterManager.setPublished(character.id!, !localChar.isPublished);
+    if (fresh) setLocalChar(fresh);
   };
 
   return (
@@ -250,18 +246,44 @@ const CharacterDetails = React.memo(function CharacterDetails({
         />
 
         {!isMainTab && (
-          <div className="character-tab-select">
-            <label>Group:</label>
-            <select
-              value={character.tabId ?? (character.externalId ? "main" : "npc")}
-              onChange={handleTabChange}
+          <div className="character-tab-select-row">
+            <div className="character-tab-select">
+              <label>Group:</label>
+              <select
+                value={
+                  character.isImportedShared
+                    ? "shared"
+                    : character.tabId ?? (character.externalId ? "main" : "npc")
+                }
+                onChange={handleTabChange}
+              >
+                <option value="npc">NPC</option>
+                {character.isImportedShared && <option value="shared">Shared</option>}
+                {tabs.map(tab => (
+                  <option key={tab.id} value={tab.id}>{tab.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              className={`publish-toggle-btn ${localChar.isPublished ? "published" : "private"}`}
+              onClick={togglePublished}
+              title={localChar.isPublished ? "Published — click to make private" : "Private — click to publish"}
             >
-              <option value="main">Main</option>
-              <option value="npc">NPC</option>
-              {tabs.map(tab => (
-                <option key={tab.id} value={tab.id}>{tab.name}</option>
-              ))}
-            </select>
+              {localChar.isPublished ? (
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                  <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 11 7 11 7a13.16 13.16 0 0 1-1.67 2.68" />
+                  <path d="M6.61 6.61A13.53 13.53 0 0 0 1 12s4 7 11 7a9.74 9.74 0 0 0 5.39-1.61" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              )}
+            </button>
           </div>
         )}
 

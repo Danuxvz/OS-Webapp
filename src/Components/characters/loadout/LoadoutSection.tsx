@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type {
   Loadout,
   LoadoutHpSource,
@@ -36,9 +36,7 @@ interface LoadoutSectionProps {
 
 function parseAcMeta(raw: string | undefined): { type: ArmorType; name: string; bonus: number; text: string } {
   const text = (raw ?? "").trim();
-  if (!text) {
-    return { type: "Custom", name: "", bonus: 1, text: "" };
-  }
+  if (!text) return { type: "Custom", name: "", bonus: 1, text: "" };
 
   const [firstLine, ...rest] = text.split(/\r?\n/);
   const effectText = rest.join("\n");
@@ -77,6 +75,9 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
   const [slotCardSources, setSlotCardSources] = useState<
     { cardId: string; name: string; image?: string; amount: number }[]
   >([]);
+
+  // 🔁 Loadout fetch cancellation token
+  const loadoutFetchTokenRef = useRef(0);
 
   async function buildHpSources(charId: number): Promise<LoadoutHpSource[]> {
     const [character, entes] = await Promise.all([
@@ -268,6 +269,20 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
     });
   }
 
+  // Fetch loadouts with cancellation token
+  const refreshLoadouts = async () => {
+    if (!characterId) {
+      setLoadouts([]);
+      return;
+    }
+
+    const myToken = ++loadoutFetchTokenRef.current;
+    const result = await loadoutManager.getByCharacter(characterId);
+    if (myToken === loadoutFetchTokenRef.current) {
+      setLoadouts(result);
+    }
+  };
+
   useEffect(() => {
     if (!characterId) {
       setLoadouts([]);
@@ -282,9 +297,15 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
       return;
     }
 
-    loadoutManager.getByCharacter(characterId).then(setLoadouts);
+    // Reset loadouts immediately
+    setLoadouts([]);
+    refreshLoadouts();
+
+    // Source refresh cancellation
+    let refreshToken = 0;
 
     const refreshSources = async () => {
+      const myToken = ++refreshToken;
       const [hp, atk, weapon, he, ae, ac, slotSrc, slotCards] = await Promise.all([
         buildHpSources(characterId),
         buildAtkSources(characterId),
@@ -295,6 +316,7 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
         buildSlotSources(characterId),
         buildSlotCardSources(characterId),
       ]);
+      if (myToken !== refreshToken) return;
       setHpSources(hp);
       setAtkSources(atk);
       setWeaponSources(weapon);

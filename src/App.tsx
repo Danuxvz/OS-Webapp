@@ -109,7 +109,10 @@ function App({ discordId }: { discordId: string | null }) {
 
     // Determine which tab the active character belongs to
     let targetTab = "main";
-    if (activeCharacter.tabId) {
+
+    if (activeCharacter.isImportedShared) {
+      targetTab = "shared";
+    } else if (activeCharacter.tabId) {
       targetTab = activeCharacter.tabId;
     } else if (!activeCharacter.externalId) {
       targetTab = "npc";

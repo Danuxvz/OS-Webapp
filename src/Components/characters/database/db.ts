@@ -51,6 +51,16 @@ export interface Character extends SyncMeta {
   historySum: number;
   schemaVersion: number;
   tabId?: string;
+
+  // Sharing/publishing (see BrowseNpcsPopup). isPublished makes this
+  // character (and its live entes/loadouts) visible to other users in the
+  // browse popup — it's the SAME record, so edits keep reflecting there.
+  // isImportedShared marks a local copy that came from importing someone
+  // else's published NPC; it's what puts it in the virtual "Shared" tab.
+  // Once a character is moved out of Shared via the tab select, this is
+  // cleared and it can never be set again from the UI — only Import sets it.
+  isPublished?: boolean;
+  isImportedShared?: boolean;
 }
 
 export interface CustomItem {
@@ -130,6 +140,16 @@ export interface Tab {
 }
 
 /* =========================
+   BOOKMARKS (browse-NPCs popup)
+========================= */
+
+export interface Bookmark {
+  // remote character id of the published NPC that's bookmarked
+  remoteCharacterId: string;
+  createdAt: number;
+}
+
+/* =========================
    DATABASE CLASS
 ========================= */
 
@@ -141,6 +161,7 @@ class OpenSourceDB extends Dexie {
   loadouts!: Table<DBLoadout, number>;
   enteMetadata!: Table<EnteMetadata, string>;
   tabs!: Table<Tab, string>;
+  bookmarks!: Table<Bookmark, string>;
 
   constructor() {
     super("OpenSourceDB");
@@ -421,6 +442,39 @@ class OpenSourceDB extends Dexie {
           tab.isDeleted = false;
           await tx.table("tabs").put(tab);
         }
+      }
+    });
+
+    // Version 14 – NPC sharing: publish flag, shared-import marker, bookmarks
+    this.version(14).stores({
+      characters: `
+        ++id,
+        remoteId,
+        externalId,
+        source,
+        discordId,
+        charName,
+        updatedAt,
+        tabId,
+        isPublished,
+        isImportedShared
+      `,
+      bookmarks: `
+        remoteCharacterId
+      `
+    }).upgrade(async (tx) => {
+      const characters = await tx.table("characters").toArray();
+      for (const char of characters) {
+        let changed = false;
+        if (char.isPublished === undefined) {
+          char.isPublished = false;
+          changed = true;
+        }
+        if (char.isImportedShared === undefined) {
+          char.isImportedShared = false;
+          changed = true;
+        }
+        if (changed) await tx.table("characters").put(char);
       }
     });
   }

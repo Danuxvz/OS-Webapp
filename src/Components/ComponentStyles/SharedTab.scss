@@ -1,0 +1,20 @@
+.sidebar-tab-shared {
+  border-color: #4dabf7 !important;
+  background: linear-gradient(180deg, #16243a, #10192b) !important;
+  color: #cfe6ff !important;
+}
+
+.sidebar-tab-shared.active {
+  background: #1d3a5f !important;
+  border-color: #74c0fc !important;
+  box-shadow: 0 0 0 1px #4dabf7 inset;
+}
+
+.browse-npcs-btn {
+  background: #1d3a5f;
+  border: 1px solid #4dabf7;
+}
+
+.browse-npcs-btn:hover {
+  background: #23507a;
+}

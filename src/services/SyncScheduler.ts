@@ -35,7 +35,11 @@ async function performSync() {
 
 export function triggerAutoSync(immediate = false) {
   if (immediate) {
-    pendingSync = true;
+    if (isSyncing) {
+      // A sync is already in flight — this edit will be picked up by the "run again" branch in performSync() once it finishes.
+      pendingSync = true;
+      return;
+    }
     void performSync();
     return;
   }

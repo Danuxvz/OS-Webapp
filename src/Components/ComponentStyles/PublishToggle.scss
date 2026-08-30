@@ -1,0 +1,41 @@
+.character-tab-select-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.character-tab-select-row .character-tab-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.publish-toggle-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  margin-right: 16px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  cursor: pointer;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.publish-toggle-btn:hover {
+  border-color: #6c5ce7;
+  color: #ddd;
+}
+
+.publish-toggle-btn.published {
+  border-color: #4dabf7;
+  background: #163049;
+  color: #7cc4fb;
+}
+
+.publish-toggle-btn.private {
+  opacity: 0.7;
+}

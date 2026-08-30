@@ -1,6 +1,6 @@
 // CharacterManager.ts
 import { db } from "./database/db";
-import type { Character, CharacterEnte, Tab } from "./database/db";
+import type { Character, CharacterEnte, Tab, Bookmark } from "./database/db";
 import { StatBonusEngine } from "./entes/StatBonus";
 import "./entes/SpecialEntes";
 import { getEnteMetadata } from "../../services/enteMetadataService";
@@ -493,10 +493,128 @@ class CharacterManager {
   async updateCharacterTab(characterId: number, tabId: string | null): Promise<void> {
     await db.characters.update(characterId, {
       tabId: tabId ?? undefined,
+      // Moving via the group select is the only way this ever flips back to
+      // false — Import is the only thing that ever sets it true, so once a
+      // character leaves the Shared tab this way it can't return to it.
+      isImportedShared: false,
       updatedAt: Date.now(),
       isDirty: true,
     });
     triggerAutoSync();
+  }
+
+  /* =========================
+     SHARING / PUBLISHING
+  ========================= */
+
+  async setPublished(characterId: number, published: boolean) {
+    await db.characters.update(characterId, {
+      isPublished: published,
+      updatedAt: Date.now(),
+      isDirty: true,
+    });
+    triggerAutoSync();
+
+    const fresh = await this.getCharacter(characterId);
+    if (fresh) this.emit("characterUpdated", fresh);
+    return fresh;
+  }
+
+  /**
+   * Creates an independent local copy of a published NPC (fetched remote
+   * detail: character fields + its entes + its loadouts). The copy lands in
+   * the virtual "Shared" tab, starts unpublished, and has no further link
+   * back to the original — editing either one never affects the other.
+   */
+  async importSharedCharacter(
+    discordId: string,
+    remote: {
+      charName: string;
+      baseStats: Character["baseStats"];
+      bonusLog: Character["bonusLog"];
+      tempStatBonus: Character["tempStatBonus"];
+      charImage: string;
+      historySum: number;
+      schemaVersion: number;
+      entes: { enteID: string; amount: number; unlockLevel: number; notes?: string; customImage?: string; order: number }[];
+      loadouts: { name: string; data: any }[];
+    }
+  ): Promise<number> {
+    const characterId = await db.characters.add({
+      discordId,
+      charName: remote.charName,
+      baseStats: remote.baseStats,
+      bonusLog: remote.bonusLog,
+      tempStatBonus: remote.tempStatBonus,
+      charImage: remote.charImage,
+      historySum: remote.historySum,
+      schemaVersion: remote.schemaVersion,
+      source: "web",
+      isPublished: false,
+      isImportedShared: true,
+      ...createSyncMeta(),
+    });
+
+    await db.inventory.add({
+      characterId,
+      cards: {},
+      consumables: {},
+      customItems: [],
+      ...createSyncMeta(),
+    });
+
+    for (const ente of remote.entes) {
+      await db.entes.add({
+        characterId,
+        enteID: ente.enteID,
+        amount: ente.amount,
+        unlockLevel: ente.unlockLevel,
+        favorite: false,
+        order: ente.order,
+        notes: ente.notes,
+        customImage: ente.customImage,
+        isDeleted: false,
+        ...createSyncMeta(),
+      });
+    }
+
+    for (const loadout of remote.loadouts) {
+      await db.loadouts.add({
+        characterId,
+        name: loadout.name,
+        data: loadout.data,
+        isDeleted: false,
+        ...createSyncMeta(),
+      });
+    }
+
+    await this.recalculateCharacterBonuses(characterId);
+    triggerAutoSync();
+
+    const fresh = await this.getCharacter(characterId);
+    this.emit("characterCreated", fresh);
+    return characterId;
+  }
+
+  /* =========================
+     BOOKMARKS (browse-NPCs popup)
+  ========================= */
+
+  async getBookmarks(): Promise<Bookmark[]> {
+    return db.bookmarks.toArray();
+  }
+
+  async isBookmarked(remoteCharacterId: string): Promise<boolean> {
+    const row = await db.bookmarks.get(remoteCharacterId);
+    return !!row;
+  }
+
+  async addBookmark(remoteCharacterId: string): Promise<void> {
+    await db.bookmarks.put({ remoteCharacterId, createdAt: Date.now() });
+  }
+
+  async removeBookmark(remoteCharacterId: string): Promise<void> {
+    await db.bookmarks.delete(remoteCharacterId);
   }
 }
 

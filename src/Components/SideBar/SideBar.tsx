@@ -3,11 +3,13 @@ import type { Character, Tab } from '../characters/database/db';
 import CharacterDetails from "./CharacterDetails.tsx";
 import PromptModal from "./PromptModal.tsx";
 import ConfirmModal from "./ConfirmModal.tsx";
+import BrowseNpcsPopup from "./BrowseNPCsPopup.tsx";
 import { refreshMetadata } from '../../services/enteMetadataService.ts';
 import { characterManager } from '../characters/CharacterManager';
 import { getLoggedInDiscordUser, logout } from '../../services/SupaBase.ts';
 import { syncAll } from '../../services/Sync.tsx';
 import '../ComponentStyles/SideBar.scss';
+import '../ComponentStyles/SharedTab.scss';
 
 interface DiscordUser {
   id: string;
@@ -26,11 +28,6 @@ interface SidebarProps {
   setActiveTabId: React.Dispatch<React.SetStateAction<string>>;
 }
 
-const BUILTIN_TABS = [
-  { id: "main", name: "Main", isBuiltin: true },
-  { id: "npc", name: "NPC", isBuiltin: true },
-];
-
 function ControlPanel({
   sidebarHidden,
   setSidebarHidden,
@@ -45,16 +42,11 @@ function ControlPanel({
   const [discordUser, setDiscordUser] = useState<DiscordUser | null>(null);
   const [tabs, setTabs] = useState<Tab[]>([]);
 
-  // Tabs are always rendered sorted by creation order, regardless of how
-  // `tabs` state was last mutated (optimistic append, background sync, etc.)
   const sortedTabs = useMemo(
     () => [...tabs].sort((a, b) => a.order - b.order),
     [tabs]
   );
 
-  // ---------------------------------------------------------------
-  // In-app replacements for window.prompt()/window.confirm()
-  // ---------------------------------------------------------------
   const [promptState, setPromptState] = useState<{ title: string; placeholder?: string } | null>(null);
   const promptResolveRef = useRef<((value: string | null) => void) | null>(null);
 
@@ -91,12 +83,17 @@ function ControlPanel({
     loadTabs();
   }, []);
 
+  const [showBrowseNpcs, setShowBrowseNpcs] = useState(false);
+
   const filteredCharacters = useMemo(() => {
     if (activeTabId === "main") {
       return characters.filter(c => !!c.externalId && !c.tabId);
     }
     if (activeTabId === "npc") {
-      return characters.filter(c => !c.externalId && !c.tabId);
+      return characters.filter(c => !c.externalId && !c.tabId && !c.isImportedShared);
+    }
+    if (activeTabId === "shared") {
+      return characters.filter(c => !!c.isImportedShared);
     }
     return characters.filter(c => c.tabId === activeTabId);
   }, [characters, activeTabId]);
@@ -120,7 +117,6 @@ function ControlPanel({
     setCharacters(updated);
   };
 
-  // ✅ Direct assignment – no null delay, no layout flash
   const selectCharacter = (id: number) => {
     if (id === activeCharacterId) return;
     setActiveCharacterId(id);
@@ -129,19 +125,20 @@ function ControlPanel({
   const handleMoveCharacter = async (characterId: number, newTabId: string | null) => {
     await characterManager.updateCharacterTab(characterId, newTabId);
     setCharacters(prev => prev.map(c =>
-      c.id === characterId ? { ...c, tabId: newTabId ?? undefined } : c
+      c.id === characterId ? { ...c, tabId: newTabId ?? undefined, isImportedShared: false } : c
     ));
+  };
+
+  const refreshCharacterList = async () => {
+    const updated = await characterManager.getCharactersByUser(discordUser?.id ?? "");
+    setCharacters(updated);
   };
 
   const handleAddCharacter = async () => {
     const name = "New Character";
     const newCharId = await characterManager.createCharacter(discordUser?.id ?? "", name);
 
-    // Assign the new character to the current custom tab, if any.
-    // Built-in tabs "main" and "npc" are handled by their natural filters
-    // (main requires externalId, so a newly created web character will show
-    // in NPC until it's assigned elsewhere).
-    if (activeTabId !== "main" && activeTabId !== "npc") {
+    if (activeTabId !== "main" && activeTabId !== "npc" && activeTabId !== "shared") {
       await characterManager.updateCharacterTab(newCharId, activeTabId);
     }
 
@@ -225,15 +222,20 @@ function ControlPanel({
 
       {/* TABS */}
       <div className="sidebar-tabs">
-        {BUILTIN_TABS.map(tab => (
-          <button
-            key={tab.id}
-            className={`sidebar-tab ${activeTabId === tab.id ? "active" : ""}`}
-            onClick={() => setActiveTabId(tab.id)}
-          >
-            {tab.name}
-          </button>
-        ))}
+        <button
+          className={`sidebar-tab ${activeTabId === "main" ? "active" : ""}`}
+          onClick={() => setActiveTabId("main")}
+        >
+          Main
+        </button>
+
+        <button
+          className={`sidebar-tab ${activeTabId === "npc" ? "active" : ""}`}
+          onClick={() => setActiveTabId("npc")}
+        >
+          NPC
+        </button>
+
         {sortedTabs.map(tab => (
           <button
             key={tab.id}
@@ -247,10 +249,30 @@ function ControlPanel({
             {tab.name}
           </button>
         ))}
+
+        <button
+          className={`sidebar-tab sidebar-tab-shared ${activeTabId === "shared" ? "active" : ""}`}
+          onClick={() => setActiveTabId("shared")}
+        >
+          Shared
+        </button>
+
         <button className="sidebar-tab tab-add" onClick={handleAddTab} title="Nueva pestaña">
           +
         </button>
       </div>
+
+      {/* BROWSE NPCS (top of shared tab only) */}
+      {activeTabId === "shared" && (
+        <div className="p-2">
+          <button
+            className="btn text-white add-character-btn browse-npcs-btn w-100"
+            onClick={() => setShowBrowseNpcs(true)}
+          >
+            🔍 Browse NPCs
+          </button>
+        </div>
+      )}
 
       {/* CHARACTER LIST */}
       <div className="sidebar-bottom p-3">
@@ -266,16 +288,29 @@ function ControlPanel({
             />
           ))}
 
-          <div className="mt-3 d-grid">
-            <button
-              className="btn text-white add-character-btn"
-              onClick={handleAddCharacter}
-            >
-              + Add New Character
-            </button>
-          </div>
+          {activeTabId !== "shared" && (
+            <div className="mt-3 d-grid">
+              <button
+                className="btn text-white add-character-btn"
+                onClick={handleAddCharacter}
+              >
+                + Add New Character
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {showBrowseNpcs && discordUser && (
+        <BrowseNpcsPopup
+          discordId={discordUser.id}
+          onClose={() => setShowBrowseNpcs(false)}
+          onImported={async (newCharId) => {
+            await refreshCharacterList();
+            selectCharacter(newCharId);
+          }}
+        />
+      )}
 
       {promptState && (
         <PromptModal

@@ -24,6 +24,22 @@ interface Props {
   onDelete: (loadout: Loadout) => void;
 }
 
+const emptyLoadoutData = {
+  hp: { baseMax: 0, baseCurrent: 0, tempBonus: 0, characterTempBonus: 0, sources: [], barriers: [] },
+  atk: { base: 0, tempBonus: 0, characterTempBonus: 0, sources: [] },
+  weapon: { enteId: null, name: "", size: "", type: "", element: "", damageBonus: 0, image: "" },
+  habilidadesPasivas: { max: 2, selectedIds: [] },
+  armorClass: { enteId: null, type: "Custom", name: "", bonus: 1, text: "", image: "" },
+  slots: { base: 0, tempBonus: 0, characterTempBonus: 0, sources: [], cards: [] },
+  notes: "",
+  customHE: [],
+  customACs: [],
+  customWeapons: [],
+  habilidadesActivas: [],
+  activeAEIds: [],
+  selectedActivaIds: [],
+};
+
 function LoadoutCard({
   loadout,
   hpSources,
@@ -41,13 +57,15 @@ function LoadoutCard({
   const [popupSection, setPopupSection] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
 
+  const data = loadout.data ?? emptyLoadoutData;
+
   const [localName, setLocalName] = useState(loadout.name);
   const [localHpCurrent, setLocalHpCurrent] = useState(
-    String(loadout.data.hp?.baseCurrent ?? 0)
+    String(data.hp?.baseCurrent ?? 0)
   );
   const [localBarrierAmounts, setLocalBarrierAmounts] = useState<Record<string, string>>(
     () => {
-      const barriers = loadout.data.hp?.barriers ?? [];
+      const barriers = data.hp?.barriers ?? [];
       const map: Record<string, string> = {};
       barriers.forEach((b) => {
         map[b.id] = String(b.amount);
@@ -55,13 +73,13 @@ function LoadoutCard({
       return map;
     }
   );
-  const [localNotes, setLocalNotes] = useState(loadout.data.notes ?? "");
+  const [localNotes, setLocalNotes] = useState(data.notes ?? "");
 
   useEffect(() => {
     setLocalName(loadout.name);
-    setLocalHpCurrent(String(loadout.data.hp?.baseCurrent ?? 0));
-    setLocalNotes(loadout.data.notes ?? "");
-    const barriers = loadout.data.hp?.barriers ?? [];
+    setLocalHpCurrent(String(data.hp?.baseCurrent ?? 0));
+    setLocalNotes(data.notes ?? "");
+    const barriers = data.hp?.barriers ?? [];
     const newMap: Record<string, string> = {};
     barriers.forEach((b) => {
       newMap[b.id] = String(b.amount);
@@ -69,57 +87,16 @@ function LoadoutCard({
     setLocalBarrierAmounts(newMap);
   }, [loadout.id]);
 
-  const hp = loadout.data.hp ?? {
-    baseMax: 0,
-    baseCurrent: 0,
-    tempBonus: 0,
-    characterTempBonus: 0,
-    sources: [],
-    barriers: [],
-  };
-  const atk = loadout.data.atk ?? {
-    base: 0,
-    tempBonus: 0,
-    characterTempBonus: 0,
-    sources: [],
-  };
-  const weapon = loadout.data.weapon ?? {
-    enteId: null,
-    name: "",
-    size: "",
-    type: "",
-    element: "",
-    damageBonus: 0,
-    image: "",
-  };
-
-  const he = {
-    max: loadout.data.habilidadesPasivas?.max ?? 2,
-    selectedIds: loadout.data.habilidadesPasivas?.selectedIds ?? [],
-  };
-
-  const armorClass = loadout.data.armorClass ?? {
-    enteId: null,
-    type: "Custom",
-    name: "",
-    bonus: 1,
-    text: "",
-    image: "",
-  };
-
-  const slots = loadout.data.slots ?? {
-    base: 0,
-    tempBonus: 0,
-    characterTempBonus: 0,
-    sources: [],
-    cards: [],
-  };
-  const notes = loadout.data.notes ?? "";
-
-  // Custom HEs and Activas
-  const customHE = loadout.data.customHE ?? [];
-  const customActivas = loadout.data.habilidadesActivas ?? [];
-  const activeAEIds = loadout.data.activeAEIds ?? [];
+  const hp = data.hp ?? emptyLoadoutData.hp;
+  const atk = data.atk ?? emptyLoadoutData.atk;
+  const weapon = data.weapon ?? emptyLoadoutData.weapon;
+  const he = data.habilidadesPasivas ?? emptyLoadoutData.habilidadesPasivas;
+  const armorClass = data.armorClass ?? emptyLoadoutData.armorClass;
+  const slots = data.slots ?? emptyLoadoutData.slots;
+  const notes = data.notes ?? "";
+  const customHE = data.customHE ?? [];
+  const customActivas = data.habilidadesActivas ?? [];
+  const activeAEIds = data.activeAEIds ?? [];
 
   const enabledHpBonus = (hp.sources ?? [])
     .filter((s) => s.enabled)
@@ -145,7 +122,6 @@ function LoadoutCard({
 
   const weaponDetails = [weapon.size, weapon.element].filter(Boolean).join(" · ");
 
-  // HE display
   const customSelectedHE = customHE
     .filter((c) => he.selectedIds.includes(c.id))
     .map((c) => ({
@@ -166,7 +142,6 @@ function LoadoutCard({
 
   const selectedHE = [...customSelectedHE, ...regularSelectedHE];
 
-  // Activas display
   const selectedCustomActivas = customActivas.map((a) => ({
     id: a.id,
     name: a.name,
@@ -235,7 +210,7 @@ function LoadoutCard({
     onUpdate({
       ...loadout,
       data: {
-        ...loadout.data,
+        ...data,
         slots: {
           ...slots,
           cards: nextCards,
@@ -256,7 +231,7 @@ function LoadoutCard({
     onUpdate({
       ...loadout,
       data: {
-        ...loadout.data,
+        ...data,
         hp: nextHp,
       },
     });
@@ -310,7 +285,7 @@ function LoadoutCard({
       onUpdate({
         ...loadout,
         data: {
-          ...loadout.data,
+          ...data,
           notes: localNotes,
         },
       });
@@ -599,7 +574,7 @@ function LoadoutCard({
           )}
         </div>
 
-        {/* Delete button (only in config mode AND not NPC mode) */}
+        {/* Delete button */}
         {configOpen && !isNpcMode && (
           <div className="mt-3 d-flex justify-content-end">
             <button
