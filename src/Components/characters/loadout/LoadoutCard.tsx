@@ -6,7 +6,7 @@ import type {
   LoadoutACSource,
   LoadoutSlotSource,
 } from "../../../types";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import LoadoutPopup from "./LoadoutPopup";
 
 interface Props {
@@ -57,6 +57,12 @@ function LoadoutCard({
   const [popupSection, setPopupSection] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
 
+  // Always keep a ref to the latest loadout prop
+  const loadoutRef = useRef(loadout);
+  useEffect(() => {
+    loadoutRef.current = loadout;
+  }, [loadout]);
+
   const data = loadout.data ?? emptyLoadoutData;
 
   const [localName, setLocalName] = useState(loadout.name);
@@ -75,17 +81,18 @@ function LoadoutCard({
   );
   const [localNotes, setLocalNotes] = useState(data.notes ?? "");
 
+  // Sync local state when the loadout changes externally
   useEffect(() => {
     setLocalName(loadout.name);
-    setLocalHpCurrent(String(data.hp?.baseCurrent ?? 0));
-    setLocalNotes(data.notes ?? "");
-    const barriers = data.hp?.barriers ?? [];
+    setLocalHpCurrent(String(loadout.data?.hp?.baseCurrent ?? 0));
+    setLocalNotes(loadout.data?.notes ?? "");
+    const barriers = loadout.data?.hp?.barriers ?? [];
     const newMap: Record<string, string> = {};
     barriers.forEach((b) => {
       newMap[b.id] = String(b.amount);
     });
     setLocalBarrierAmounts(newMap);
-  }, [loadout.id]);
+  }, [loadout.id, loadout.data?.hp?.baseCurrent, loadout.data?.notes, loadout.data?.hp?.barriers]);
 
   const hp = data.hp ?? emptyLoadoutData.hp;
   const atk = data.atk ?? emptyLoadoutData.atk;
@@ -188,7 +195,11 @@ function LoadoutCard({
   const usedSlots = slotBoxItems.filter((item) => item.used).length;
 
   const handleToggleSlot = (cardId: string, index: number) => {
-    const nextCards = [...(slots.cards ?? [])];
+    const currentLoadout = loadoutRef.current;
+    const currentData = currentLoadout.data ?? emptyLoadoutData;
+    const currentSlots = currentData.slots ?? emptyLoadoutData.slots;
+
+    const nextCards = [...(currentSlots.cards ?? [])];
     const card = nextCards.find((c) => c.cardId === cardId);
     if (!card) return;
 
@@ -208,11 +219,11 @@ function LoadoutCard({
     card.usedIndices = Array.from(usedSet).sort((a, b) => a - b);
 
     onUpdate({
-      ...loadout,
+      ...currentLoadout,
       data: {
-        ...data,
+        ...currentData,
         slots: {
-          ...slots,
+          ...currentSlots,
           cards: nextCards,
         },
       },
@@ -228,45 +239,53 @@ function LoadoutCard({
   const barriers = hp.barriers ?? [];
 
   const updateHp = (nextHp: typeof hp) => {
+    const currentLoadout = loadoutRef.current;
     onUpdate({
-      ...loadout,
+      ...currentLoadout,
       data: {
-        ...data,
+        ...currentLoadout.data,
         hp: nextHp,
       },
     });
   };
 
   const updateBarrier = (id: string, amount: number) => {
+    const currentLoadout = loadoutRef.current;
+    const currentHp = currentLoadout.data?.hp ?? emptyLoadoutData.hp;
     updateHp({
-      ...hp,
-      barriers: barriers.map((b) =>
+      ...currentHp,
+      barriers: (currentHp.barriers ?? []).map((b) =>
         b.id === id ? { ...b, amount: Math.max(0, amount) } : b
       ),
     });
   };
 
   const deleteBarrier = (id: string) => {
+    const currentLoadout = loadoutRef.current;
+    const currentHp = currentLoadout.data?.hp ?? emptyLoadoutData.hp;
     updateHp({
-      ...hp,
-      barriers: barriers.filter((b) => b.id !== id),
+      ...currentHp,
+      barriers: (currentHp.barriers ?? []).filter((b) => b.id !== id),
     });
   };
 
   const commitName = () => {
-    if (localName !== loadout.name) {
+    const currentLoadout = loadoutRef.current;
+    if (localName !== currentLoadout.name) {
       onUpdate({
-        ...loadout,
+        ...currentLoadout,
         name: localName,
       });
     }
   };
 
   const commitHpCurrent = () => {
+    const currentLoadout = loadoutRef.current;
+    const currentHp = currentLoadout.data?.hp ?? emptyLoadoutData.hp;
     const num = Number(localHpCurrent);
-    if (!isNaN(num) && num !== hp.baseCurrent) {
+    if (!isNaN(num) && num !== currentHp.baseCurrent) {
       updateHp({
-        ...hp,
+        ...currentHp,
         baseCurrent: num,
       });
     }
@@ -275,17 +294,21 @@ function LoadoutCard({
   const commitBarrier = (id: string) => {
     const raw = localBarrierAmounts[id];
     const num = Number(raw);
-    if (!isNaN(num) && num !== barriers.find((b) => b.id === id)?.amount) {
+    const currentLoadout = loadoutRef.current;
+    const currentHp = currentLoadout.data?.hp ?? emptyLoadoutData.hp;
+    const barrier = (currentHp.barriers ?? []).find((b) => b.id === id);
+    if (!isNaN(num) && barrier && num !== barrier.amount) {
       updateBarrier(id, num);
     }
   };
 
   const commitNotes = () => {
-    if (localNotes !== notes) {
+    const currentLoadout = loadoutRef.current;
+    if (localNotes !== (currentLoadout.data?.notes ?? "")) {
       onUpdate({
-        ...loadout,
+        ...currentLoadout,
         data: {
-          ...data,
+          ...currentLoadout.data,
           notes: localNotes,
         },
       });
