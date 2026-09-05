@@ -292,6 +292,14 @@ class CharacterManager {
     this.emit("entesUpdated", { characterId, entes });
   }
 
+  /**
+   * Public helper to emit an entesUpdated event after external (sync) changes.
+   */
+  async emitEntesUpdated(characterId: number) {
+    const entes = await this.getEntes(characterId);
+    this.emit("entesUpdated", { characterId, entes });
+  }
+
   /* =========================
      DARUMA RANDOMIZATION
   ========================= */
@@ -408,7 +416,6 @@ class CharacterManager {
     engine.tempBonus = character.tempStatBonus;
 
     for (const ente of entes) {
-      // ✅ Always compute unlock from current amount, not stored value
       const effectiveUnlock = computeUnlockLevel(ente.amount ?? 0);
       if (effectiveUnlock < 2) continue;
 
@@ -493,9 +500,6 @@ class CharacterManager {
   async updateCharacterTab(characterId: number, tabId: string | null): Promise<void> {
     await db.characters.update(characterId, {
       tabId: tabId ?? undefined,
-      // Moving via the group select is the only way this ever flips back to
-      // false — Import is the only thing that ever sets it true, so once a
-      // character leaves the Shared tab this way it can't return to it.
       isImportedShared: false,
       updatedAt: Date.now(),
       isDirty: true,
@@ -520,12 +524,6 @@ class CharacterManager {
     return fresh;
   }
 
-  /**
-   * Creates an independent local copy of a published NPC (fetched remote
-   * detail: character fields + its entes + its loadouts). The copy lands in
-   * the virtual "Shared" tab, starts unpublished, and has no further link
-   * back to the original — editing either one never affects the other.
-   */
   async importSharedCharacter(
     discordId: string,
     remote: {

@@ -2,6 +2,7 @@ import { supabase, getRemoteUserId, getDiscordId, getLoggedInDiscordUser } from 
 import { db } from "../Components/characters/database/db";
 import type { Character } from "../Components/characters/database/db";
 import { getEnteMetadata } from "./enteMetadataService.ts";
+import { characterManager } from "../Components/characters/CharacterManager"; // <-- ADDED IMPORT
 
 /* =========================
    UTIL
@@ -803,6 +804,11 @@ async function pullRemoteEntes() {
         });
       }
     }
+
+    // ===== ADDED: emit events so UI updates =====
+    await characterManager.recalculateCharacterBonuses(localChar.id!);
+    await characterManager.emitEntesUpdated(localChar.id!);
+    // ===========================================
   }
 }
 
