@@ -2,7 +2,7 @@ import { supabase, getRemoteUserId, getDiscordId, getLoggedInDiscordUser } from 
 import { db } from "../Components/characters/database/db";
 import type { Character } from "../Components/characters/database/db";
 import { getEnteMetadata } from "./enteMetadataService.ts";
-import { characterManager } from "../Components/characters/CharacterManager"; // <-- ADDED IMPORT
+import { characterManager } from "../Components/characters/CharacterManager";
 
 /* =========================
    UTIL
@@ -37,48 +37,12 @@ function parseInventoryBlob(blob: string) {
 
 function createDefaultLoadoutData() {
   return {
-    hp: {
-      baseMax: 0,
-      baseCurrent: 0,
-      tempBonus: 0,
-      characterTempBonus: 0,
-      sources: [],
-      barriers: [],
-    },
-    atk: {
-      base: 0,
-      tempBonus: 0,
-      characterTempBonus: 0,
-      sources: [],
-    },
-    weapon: {
-      enteId: null,
-      name: "",
-      size: "",
-      type: "",
-      element: "",
-      damageBonus: 0,
-      image: "",
-    },
-    habilidadesPasivas: {
-      max: 2,
-      selectedIds: [],
-    },
-    armorClass: {
-      enteId: null,
-      type: "Custom",
-      name: "",
-      bonus: 1,
-      text: "",
-      image: "",
-    },
-    slots: {
-      base: 0,
-      tempBonus: 0,
-      characterTempBonus: 0,
-      sources: [],
-      cards: [],
-    },
+    hp: { baseMax: 0, baseCurrent: 0, tempBonus: 0, characterTempBonus: 0, sources: [], barriers: [] },
+    atk: { base: 0, tempBonus: 0, characterTempBonus: 0, sources: [] },
+    weapon: { enteId: null, name: "", size: "", type: "", element: "", damageBonus: 0, image: "" },
+    habilidadesPasivas: { max: 2, selectedIds: [] },
+    armorClass: { enteId: null, type: "Custom", name: "", bonus: 1, text: "", image: "" },
+    slots: { base: 0, tempBonus: 0, characterTempBonus: 0, sources: [], cards: [] },
     notes: "",
     customHE: [],
     customACs: [],
@@ -111,9 +75,7 @@ async function deduplicateCharacters() {
       chars.find(c => c.discordId === currentDiscordId) ?? chars[0];
 
     for (const c of chars) {
-      if ((c.updatedAt ?? 0) > (keeper?.updatedAt ?? 0)) {
-        keeper = c;
-      }
+      if ((c.updatedAt ?? 0) > (keeper?.updatedAt ?? 0)) keeper = c;
     }
 
     if (!keeper) continue;
@@ -137,38 +99,23 @@ async function deduplicateCharacters() {
         } else {
           let shouldUpdate = false;
           const updateData: any = { updatedAt: Date.now(), isDirty: true };
-          if (!existing.notes && ente.notes) {
-            updateData.notes = ente.notes;
-            shouldUpdate = true;
-          }
-          if (!existing.customImage && ente.customImage) {
-            updateData.customImage = ente.customImage;
-            shouldUpdate = true;
-          }
-          if (shouldUpdate) {
-            await db.entes.update(existing.id!, updateData);
-          }
+          if (!existing.notes && ente.notes) { updateData.notes = ente.notes; shouldUpdate = true; }
+          if (!existing.customImage && ente.customImage) { updateData.customImage = ente.customImage; shouldUpdate = true; }
+          if (shouldUpdate) await db.entes.update(existing.id!, updateData);
           await db.entes.delete(ente.id!);
         }
       }
 
       const loadouts = await db.loadouts.where({ characterId: dup.id }).toArray();
       for (const l of loadouts) {
-        await db.loadouts.update(l.id!, {
-          characterId: keeper.id!,
-          updatedAt: Date.now(),
-          isDirty: true,
-        });
+        await db.loadouts.update(l.id!, { characterId: keeper.id!, updatedAt: Date.now(), isDirty: true });
       }
 
       await db.inventory.where({ characterId: dup.id }).delete();
       await db.characters.delete(dup.id!);
     }
 
-    await db.characters.update(keeper.id!, {
-      updatedAt: Date.now(),
-      isDirty: true,
-    });
+    await db.characters.update(keeper.id!, { updatedAt: Date.now(), isDirty: true });
   }
 }
 
@@ -186,36 +133,22 @@ async function pullTabs() {
     .eq("discord_id", discordId)
     .order("order");
 
-  if (error) {
-    console.warn("pullTabs: failed to fetch remote tabs", error);
-    return;
-  }
+  if (error) { console.warn("pullTabs: failed to fetch remote tabs", error); return; }
 
   const localTabs = await db.tabs.toArray();
 
   for (const remote of remoteTabs ?? []) {
     const local = localTabs.find((t) => t.remoteId === remote.id);
     if (local) {
-      await db.tabs.update(local.id!, {
-        name: remote.name,
-        order: remote.order,
-        remoteId: remote.id,
-      });
+      await db.tabs.update(local.id!, { name: remote.name, order: remote.order, remoteId: remote.id });
     } else {
-      await db.tabs.add({
-        id: remote.id,
-        remoteId: remote.id,
-        name: remote.name,
-        order: remote.order,
-      });
+      await db.tabs.add({ id: remote.id, remoteId: remote.id, name: remote.name, order: remote.order });
     }
   }
 
   const remoteIds = new Set((remoteTabs ?? []).map((r) => r.id));
   for (const local of localTabs) {
-    if (local.remoteId && !remoteIds.has(local.remoteId)) {
-      await db.tabs.delete(local.id!);
-    }
+    if (local.remoteId && !remoteIds.has(local.remoteId)) await db.tabs.delete(local.id!);
   }
 }
 
@@ -228,14 +161,8 @@ export async function pushTabs() {
   const deleted = localTabs.filter((t) => t.isDeleted);
   for (const local of deleted) {
     if (local.remoteId) {
-      const { error } = await supabase
-        .from("user_tabs")
-        .delete()
-        .eq("id", local.remoteId);
-      if (error) {
-        console.warn("pushTabs: failed to delete remote tab", local.name, error);
-        continue;
-      }
+      const { error } = await supabase.from("user_tabs").delete().eq("id", local.remoteId);
+      if (error) { console.warn("pushTabs: failed to delete remote tab", local.name, error); continue; }
     }
     await db.tabs.delete(local.id!);
   }
@@ -245,26 +172,17 @@ export async function pushTabs() {
     if (local.remoteId) {
       await supabase
         .from("user_tabs")
-        .update({
-          name: local.name,
-          order: local.order,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ name: local.name, order: local.order, updated_at: new Date().toISOString() })
         .eq("id", local.remoteId);
     } else {
       const { data, error } = await supabase
         .from("user_tabs")
-        .upsert(
-          { discord_id: discordId, name: local.name, order: local.order },
-          { onConflict: "discord_id,name" }
-        )
+        .upsert({ discord_id: discordId, name: local.name, order: local.order }, { onConflict: "discord_id,name" })
         .select()
         .single();
 
       if (!error && data) {
-        await db.tabs.update(local.id!, {
-          remoteId: data.id,
-        });
+        await db.tabs.update(local.id!, { remoteId: data.id });
       } else if (error) {
         console.warn("pushTabs: failed to create remote tab", local.name, error);
       }
@@ -280,9 +198,7 @@ export async function pushLocalChanges() {
   const remoteUserId = getRemoteUserId();
   if (!remoteUserId) return;
 
-  const dirtyCharacters = await db.characters
-    .filter((c) => c.isDirty)
-    .toArray();
+  const dirtyCharacters = await db.characters.filter((c) => c.isDirty).toArray();
 
   for (const char of dirtyCharacters) {
     try {
@@ -308,13 +224,8 @@ export async function pushLocalChanges() {
         charPayload.tab_id = null;
       }
 
-      if (char.externalId) {
-        charPayload.external_id = char.externalId;
-      }
-
-      if (char.remoteId) {
-        charPayload.id = char.remoteId;
-      }
+      if (char.externalId) charPayload.external_id = char.externalId;
+      if (char.remoteId) charPayload.id = char.remoteId;
 
       const conflictField = char.externalId ? "external_id" : "id";
 
@@ -332,19 +243,14 @@ export async function pushLocalChanges() {
       const remoteCharId = char.remoteId ?? charUpsert.data.id;
 
       if (!char.remoteId && remoteCharId) {
-        await db.characters.update(char.id!, {
-          remoteId: remoteCharId,
-        });
+        await db.characters.update(char.id!, { remoteId: remoteCharId });
       }
 
       if (!remoteCharId) continue;
 
-      const localEntes = await db.entes
-        .where("characterId")
-        .equals(char.id!)
-        .toArray();
+      const localEntes = await db.entes.where("characterId").equals(char.id!).toArray();
 
-      if (localEntes.length > 0 && remoteCharId) {
+      if (localEntes.length > 0) {
         const deletedEntes = localEntes.filter(e => e.isDeleted);
         const activeEntes = localEntes.filter(e => !e.isDeleted);
 
@@ -356,10 +262,7 @@ export async function pushLocalChanges() {
             .eq("ente_id", ente.enteID);
 
           if (!error) {
-            await db.entes.update(ente.id!, {
-              isDirty: false,
-              updatedAt: Date.now(),
-            });
+            await db.entes.update(ente.id!, { isDirty: false, updatedAt: Date.now() });
           } else {
             console.warn("pushLocalChanges: failed to mark ente deleted", ente.enteID, error);
           }
@@ -367,7 +270,6 @@ export async function pushLocalChanges() {
 
         if (activeEntes.length > 0) {
           const uniqueMap = new Map<string, any>();
-
           for (const ente of activeEntes) {
             const key = `${remoteCharId}_${ente.enteID}`;
             uniqueMap.set(key, {
@@ -384,21 +286,15 @@ export async function pushLocalChanges() {
             });
           }
 
-          const enteRecords = Array.from(uniqueMap.values());
           const entesUpsert = await supabase
             .from("entes")
-            .upsert(enteRecords, { onConflict: "character_id,ente_id" });
+            .upsert(Array.from(uniqueMap.values()), { onConflict: "character_id,ente_id" });
 
-          if (entesUpsert.error) {
-            console.warn("pushLocalChanges: entes upsert error", entesUpsert.error);
-          }
+          if (entesUpsert.error) console.warn("pushLocalChanges: entes upsert error", entesUpsert.error);
         }
       }
 
-      const inv = await db.inventory
-        .where("characterId")
-        .equals(char.id!)
-        .first();
+      const inv = await db.inventory.where("characterId").equals(char.id!).first();
 
       if (inv) {
         const invPayload: any = {
@@ -408,10 +304,7 @@ export async function pushLocalChanges() {
           customItems: inv.customItems ?? [],
           updated_at: new Date(inv.updatedAt).toISOString(),
         };
-
-        if (inv.remoteId) {
-          invPayload.id = inv.remoteId;
-        }
+        if (inv.remoteId) invPayload.id = inv.remoteId;
 
         const invUpsert = await supabase
           .from("inventory")
@@ -422,29 +315,18 @@ export async function pushLocalChanges() {
         if (invUpsert.error) {
           console.warn("pushLocalChanges: inventory upsert error", invUpsert.error);
         } else if (invUpsert.data && !inv.remoteId) {
-          await db.inventory.update(inv.id!, {
-            remoteId: invUpsert.data.id,
-          });
+          await db.inventory.update(inv.id!, { remoteId: invUpsert.data.id });
         }
       }
 
-      const localLoadouts = await db.loadouts
-        .where("characterId")
-        .equals(char.id!)
-        .toArray();
+      const localLoadouts = await db.loadouts.where("characterId").equals(char.id!).toArray();
 
       const deleted = localLoadouts.filter((l) => l.isDeleted);
       for (const l of deleted) {
         if (l.remoteId) {
-          const { error } = await supabase
-            .from("loadouts")
-            .delete()
-            .eq("id", l.remoteId);
-          if (!error) {
-            await db.loadouts.delete(l.id!);
-          } else {
-            console.warn("Failed to delete loadout", l.name, error);
-          }
+          const { error } = await supabase.from("loadouts").delete().eq("id", l.remoteId);
+          if (!error) await db.loadouts.delete(l.id!);
+          else console.warn("Failed to delete loadout", l.name, error);
         } else {
           await db.loadouts.delete(l.id!);
         }
@@ -475,27 +357,15 @@ export async function pushLocalChanges() {
             selected_activa_ids: data.selectedActivaIds ?? [],
             updated_at: new Date(l.updatedAt).toISOString(),
           };
-
-          if (l.remoteId) {
-            payload.id = l.remoteId;
-          }
-
+          if (l.remoteId) payload.id = l.remoteId;
           return payload;
         };
 
         if (existingLoadouts.length > 0) {
           const existingRecords = existingLoadouts.map(mapLoadoutToPayload);
-          const { error } = await supabase
-            .from("loadouts")
-            .upsert(existingRecords, { onConflict: "id" });
-
-          if (error) {
-            console.warn("pushLocalChanges: loadouts upsert error", error);
-          } else {
-            for (const l of existingLoadouts) {
-              await db.loadouts.update(l.id!, { isDirty: false });
-            }
-          }
+          const { error } = await supabase.from("loadouts").upsert(existingRecords, { onConflict: "id" });
+          if (error) console.warn("pushLocalChanges: loadouts upsert error", error);
+          else for (const l of existingLoadouts) await db.loadouts.update(l.id!, { isDirty: false });
         }
 
         if (newLoadouts.length > 0) {
@@ -513,25 +383,16 @@ export async function pushLocalChanges() {
                 (l) => l.name === remote.name && l.characterId === char.id
               );
               if (local) {
-                await db.loadouts.update(local.id!, {
-                  remoteId: remote.id,
-                  isDirty: false,
-                });
+                await db.loadouts.update(local.id!, { remoteId: remote.id, isDirty: false });
               }
             }
           }
         }
       }
 
-      await db.characters.update(char.id!, {
-        isDirty: false,
-      });
+      await db.characters.update(char.id!, { isDirty: false });
     } catch (err) {
-      console.error(
-        "pushLocalChanges: unexpected error syncing",
-        char.charName,
-        err
-      );
+      console.error("pushLocalChanges: unexpected error syncing", char.charName, err);
     }
   }
 }
@@ -571,30 +432,17 @@ export async function pullCharactersExport() {
   if (!exports) return;
 
   const CARD_IDS = [
-    "AE_Card",
-    "Basic_Attack",
-    "Ethrielle",
-    "Engaar",
-    "Halagar",
-    "Interpretar",
-    "Intimidar",
-    "Negociar",
-    "Persuadir",
-    "Rogar",
-    "Seducir",
-    "Sobornar",
+    "AE_Card", "Basic_Attack", "Ethrielle", "Engaar", "Halagar",
+    "Interpretar", "Intimidar", "Negociar", "Persuadir", "Rogar",
+    "Seducir", "Sobornar",
   ];
   const CONSUMABLE_IDS = [
-    "KudagiBento",
-    "AstralDoguBento",
-    "GetStrongBento",
-    "ScarletSpectralMiso",
-    "ShellSushi",
-    "SpicyFireRamen",
-    "MomijiManju",
-    "MochisDeBaku",
-    "TaiyakiKijyo",
+    "KudagiBento", "AstralDoguBento", "GetStrongBento", "ScarletSpectralMiso",
+    "ShellSushi", "SpicyFireRamen", "MomijiManju", "MochisDeBaku", "TaiyakiKijyo",
   ];
+
+  // Track characters we touched, so we can recalculate their bonuses at the end
+  const affectedCharacterIds = new Set<number>();
 
   for (const exp of exports) {
     const externalId = makeExternalId(exp.owner_id, exp.name);
@@ -629,7 +477,6 @@ export async function pullCharactersExport() {
         updatedAt: Date.now(),
         isDirty: true,
       });
-
       localChar = await db.characters.get(id);
     }
 
@@ -665,18 +512,13 @@ export async function pullCharactersExport() {
 
     for (const [rawId, amount] of Object.entries(parsedInventory)) {
       const normalized = normalize(rawId);
+
       const cardMatch = CARD_IDS.find((c) => normalize(c) === normalized);
-      if (cardMatch) {
-        inventory!.cards[cardMatch] = amount;
-        continue;
-      }
-      const consumableMatch = CONSUMABLE_IDS.find(
-        (c) => normalize(c) === normalized
-      );
-      if (consumableMatch) {
-        inventory!.consumables[consumableMatch] = amount;
-        continue;
-      }
+      if (cardMatch) { inventory!.cards[cardMatch] = amount; continue; }
+
+      const consumableMatch = CONSUMABLE_IDS.find((c) => normalize(c) === normalized);
+      if (consumableMatch) { inventory!.consumables[consumableMatch] = amount; continue; }
+
       const existing = existingMap.get(rawId);
       if (existing) {
         if (existing.amount !== amount) {
@@ -709,6 +551,20 @@ export async function pullCharactersExport() {
       isDirty: true,
     });
 
+    // 🔧 FIX: Zero out entes that are no longer in the Discord export.
+    // These stay in the local sheet with amount 0 (and get soft-synced to
+    // remote as amount 0) but no longer contribute bonuses.
+    for (const ente of localEntes) {
+      if (!parsedInventory[ente.enteID] && ente.amount !== 0) {
+        await db.entes.update(ente.id!, {
+          amount: 0,
+          unlockLevel: 0,
+          updatedAt: Date.now(),
+          isDirty: true,
+        });
+      }
+    }
+
     const newName = !localChar!.charName ? exp.name : localChar!.charName;
     const newImage = !localChar!.charImage ? exp.image ?? "" : localChar!.charImage;
 
@@ -718,6 +574,15 @@ export async function pullCharactersExport() {
       updatedAt: Date.now(),
       isDirty: true,
     });
+
+    affectedCharacterIds.add(localChar!.id!);
+  }
+
+  // 🔧 FIX: After touching entes for these characters, recalculate their
+  // bonus log and tell the UI something changed.
+  for (const id of affectedCharacterIds) {
+    await characterManager.recalculateCharacterBonuses(id);
+    await characterManager.emitEntesUpdated(id);
   }
 }
 
@@ -751,6 +616,8 @@ async function pullRemoteEntes() {
 
     if (!remoteEntes) continue;
 
+    let changed = false;
+
     const activeRemote = remoteEntes.filter(r => !r.is_deleted);
     const deletedRemote = remoteEntes.filter(r => r.is_deleted);
 
@@ -759,7 +626,10 @@ async function pullRemoteEntes() {
         .where("[characterId+enteID]")
         .equals([localChar.id!, rd.ente_id])
         .first();
-      if (local && !local.isDirty) await db.entes.delete(local.id!);
+      if (local && !local.isDirty) {
+        await db.entes.delete(local.id!);
+        changed = true;
+      }
     }
 
     const activeIds = new Set(activeRemote.map(r => r.ente_id));
@@ -768,7 +638,10 @@ async function pullRemoteEntes() {
       .equals(localChar.id!)
       .toArray();
     for (const le of localAll.filter(e => !e.isDeleted)) {
-      if (!activeIds.has(le.enteID) && !le.isDirty) await db.entes.delete(le.id!);
+      if (!activeIds.has(le.enteID) && !le.isDirty) {
+        await db.entes.delete(le.id!);
+        changed = true;
+      }
     }
 
     for (const remote of activeRemote) {
@@ -792,6 +665,7 @@ async function pullRemoteEntes() {
           isDirty: false,
           isDeleted: false,
         });
+        changed = true;
       } else if (remoteTime > existing.updatedAt) {
         await db.entes.update(existing.id!, {
           amount: remote.amount,
@@ -802,13 +676,17 @@ async function pullRemoteEntes() {
           updatedAt: remoteTime,
           isDirty: false,
         });
+        changed = true;
       }
     }
 
-    // ===== ADDED: emit events so UI updates =====
-    await characterManager.recalculateCharacterBonuses(localChar.id!);
-    await characterManager.emitEntesUpdated(localChar.id!);
-    // ===========================================
+    // 🔧 FIX: Only recalc + emit when something actually changed.
+    // Recalculate from `amount` (not stored unlock_level) so any drift
+    // between the two gets corrected on the next sync.
+    if (changed) {
+      await characterManager.recalculateCharacterBonuses(localChar.id!);
+      await characterManager.emitEntesUpdated(localChar.id!);
+    }
   }
 }
 
@@ -839,20 +717,14 @@ async function pullRemoteLoadouts() {
     if (!remoteLoadouts) continue;
 
     for (const remote of remoteLoadouts) {
-      const existing = await db.loadouts
-        .where("remoteId")
-        .equals(remote.id)
-        .first();
+      const existing = await db.loadouts.where("remoteId").equals(remote.id).first();
 
       const remoteTime = new Date(remote.updated_at).getTime();
       const loadoutData = {
         hp: remote.hp ?? createDefaultLoadoutData().hp,
         atk: remote.atk ?? createDefaultLoadoutData().atk,
         weapon: remote.weapon ?? createDefaultLoadoutData().weapon,
-        habilidadesPasivas: {
-          max: 2,
-          selectedIds: remote.habilidades_pasivas ?? [],
-        },
+        habilidadesPasivas: { max: 2, selectedIds: remote.habilidades_pasivas ?? [] },
         armorClass: remote.armor_class ?? createDefaultLoadoutData().armorClass,
         slots: remote.slots ?? createDefaultLoadoutData().slots,
         notes: remote.notes ?? "",
@@ -914,11 +786,7 @@ async function pullRemoteInventories() {
 
     if (!remoteInv) continue;
 
-    const localInv = await db.inventory
-      .where("characterId")
-      .equals(localChar.id!)
-      .first();
-
+    const localInv = await db.inventory.where("characterId").equals(localChar.id!).first();
     const remoteTime = new Date(remoteInv.updated_at).getTime();
 
     if (!localInv) {
@@ -955,16 +823,10 @@ async function pullRemoteCharacters() {
   if (!remoteChars) return;
 
   for (const remote of remoteChars) {
-    let local = await db.characters
-      .where("remoteId")
-      .equals(remote.id)
-      .first();
+    let local = await db.characters.where("remoteId").equals(remote.id).first();
 
     if (!local && remote.external_id) {
-      local = await db.characters
-        .where("externalId")
-        .equals(remote.external_id)
-        .first();
+      local = await db.characters.where("externalId").equals(remote.external_id).first();
     }
 
     const remoteTime = new Date(remote.updated_at).getTime();
@@ -998,11 +860,7 @@ async function pullRemoteCharacters() {
     }
 
     if (!local.remoteId) {
-      await db.characters.update(local.id!, {
-        remoteId: remote.id,
-        updatedAt: Date.now(),
-        isDirty: true,
-      });
+      await db.characters.update(local.id!, { remoteId: remote.id, updatedAt: Date.now(), isDirty: true });
     }
 
     if (remoteTime > local.updatedAt) {
@@ -1023,18 +881,12 @@ async function pullRemoteCharacters() {
     }
 
     if (remote.external_id && local.source !== "external") {
-      await db.characters.update(local.id!, {
-        source: "external",
-        isDirty: true,
-      });
+      await db.characters.update(local.id!, { source: "external", isDirty: true });
     }
   }
 
   const remoteIds = new Set(remoteChars.map(c => c.id));
-  const allLocal = await db.characters
-    .where("discordId")
-    .equals(getDiscordId()!)
-    .toArray();
+  const allLocal = await db.characters.where("discordId").equals(getDiscordId()!).toArray();
 
   for (const local of allLocal) {
     if (local.remoteId && !remoteIds.has(local.remoteId) && !local.isDirty) {
@@ -1134,11 +986,7 @@ export async function fetchPublishedCharacters(): Promise<PublishedNpcSummary[]>
   return chars.map((c: any) => {
     const discordId = userIdToDiscordId.get(c.user_id) ?? "";
     const profile = profileMap.get(discordId);
-    const originTabName = c.tab_id
-      ? tabNameMap.get(c.tab_id) ?? "?"
-      : c.external_id
-      ? "Main"
-      : "NPC";
+    const originTabName = c.tab_id ? tabNameMap.get(c.tab_id) ?? "?" : c.external_id ? "Main" : "NPC";
 
     const charLoadouts = loadoutsByChar.get(c.id) ?? [];
     const searchParts: string[] = [c.char_name, originTabName, profile?.username ?? ""];
@@ -1154,32 +1002,18 @@ export async function fetchPublishedCharacters(): Promise<PublishedNpcSummary[]>
       searchParts.push(data.armorClass?.text ?? "");
 
       if (Array.isArray(data.customHE)) {
-        for (const he of data.customHE) {
-          searchParts.push(he.name ?? "");
-          searchParts.push(he.text ?? "");
-        }
+        for (const he of data.customHE) { searchParts.push(he.name ?? ""); searchParts.push(he.text ?? ""); }
       }
-
       if (Array.isArray(data.customACs)) {
-        for (const ac of data.customACs) {
-          searchParts.push(ac.name ?? "");
-          searchParts.push(ac.text ?? "");
-        }
+        for (const ac of data.customACs) { searchParts.push(ac.name ?? ""); searchParts.push(ac.text ?? ""); }
       }
-
       if (Array.isArray(data.customWeapons)) {
         for (const w of data.customWeapons) {
-          searchParts.push(w.name ?? "");
-          searchParts.push(w.element ?? "");
-          searchParts.push(w.damageBonus?.toString() ?? "");
+          searchParts.push(w.name ?? ""); searchParts.push(w.element ?? ""); searchParts.push(w.damageBonus?.toString() ?? "");
         }
       }
-
       if (Array.isArray(data.habilidadesActivas)) {
-        for (const ha of data.habilidadesActivas) {
-          searchParts.push(ha.name ?? "");
-          searchParts.push(ha.text ?? "");
-        }
+        for (const ha of data.habilidadesActivas) { searchParts.push(ha.name ?? ""); searchParts.push(ha.text ?? ""); }
       }
     }
 
@@ -1232,10 +1066,7 @@ export async function fetchPublishedCharacterDetail(remoteCharacterId: string) {
         hp: l.hp ?? createDefaultLoadoutData().hp,
         atk: l.atk ?? createDefaultLoadoutData().atk,
         weapon: l.weapon ?? createDefaultLoadoutData().weapon,
-        habilidadesPasivas: {
-          max: 2,
-          selectedIds: l.habilidades_pasivas ?? [],
-        },
+        habilidadesPasivas: { max: 2, selectedIds: l.habilidades_pasivas ?? [] },
         armorClass: l.armor_class ?? createDefaultLoadoutData().armorClass,
         slots: l.slots ?? createDefaultLoadoutData().slots,
         notes: l.notes ?? "",
