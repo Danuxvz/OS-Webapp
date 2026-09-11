@@ -3,7 +3,11 @@ import { useState, useEffect, useMemo, useRef, Fragment } from "react";
 import type { Ente } from "../../../types";
 import EnteCard from "./EnteCard";
 import AddEntePopup from "./AddEntePopup";
-import { characterManager } from "../CharacterManager";
+import {
+  characterManager,
+  computeUnlockLevel,
+  getSpecialEVariantGroup,
+} from "../CharacterManager";
 import { getEnteMetadata } from "../../../services/enteMetadataService";
 import { db } from "../database/db";
 import { randomizeDarumaForCharacter } from "../../../services/DarumaService";
@@ -31,27 +35,6 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
   const isLoadingRef = useRef(false);
   const needsReloadRef = useRef(false);
-
-  function computeUnlockLevel(amount: number) {
-    if (amount >= 5) return 4;
-    if (amount === 4) return 3;
-    if (amount === 3) return 2;
-    if (amount === 2) return 1;
-    return 0;
-  }
-
-  const SPECIAL_VARIANT_BASES: Record<string, string> = {
-    E005: "E005A",
-    E060: "E060A",
-    E052: "E052A",
-  };
-
-  function getSpecialBase(id: string): string | null {
-    for (const base of Object.keys(SPECIAL_VARIANT_BASES)) {
-      if (id.startsWith(base)) return base;
-    }
-    return null;
-  }
 
   async function loadEntes() {
     if (!characterId) {
@@ -121,11 +104,13 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
       if (thisLoadId !== loadIdRef.current || !mountedRef.current) return;
 
-      const validEntes = (enriched.filter(Boolean) as Ente[]);
+      const validEntes = enriched.filter(Boolean) as Ente[];
 
+      // FIX: use the same shared grouping helper as CharacterManager so the
+      // UI and the bonus engine can never disagree on unlock levels.
       const specialGroups: Record<string, Ente[]> = {};
       validEntes.forEach((ente) => {
-        const base = getSpecialBase(ente.id);
+        const base = getSpecialEVariantGroup(ente.id);
         if (!base) return;
         if (!specialGroups[base]) specialGroups[base] = [];
         specialGroups[base].push(ente);
@@ -177,7 +162,7 @@ function EntesSection({ characterId }: EntesSectionProps) {
 
     const handler = (payload: any) => {
       if (suppressReloadRef.current > 0) return;
-      if (payload && (payload.characterId !== characterId && payload.id !== characterId)) return;
+      if (payload && payload.characterId !== characterId && payload.id !== characterId) return;
       loadEntes();
     };
 

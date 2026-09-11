@@ -13,12 +13,31 @@ function createSyncMeta() {
   };
 }
 
-function computeUnlockLevel(amount: number) {
+export function computeUnlockLevel(amount: number) {
   if (amount >= 5) return 4;
   if (amount === 4) return 3;
   if (amount === 3) return 2;
   if (amount === 2) return 1;
   return 0;
+}
+
+/**
+ * E-series variant groups. All variants of a given base share the *highest*
+ * unlock level in their group (E005 Tsuchigumo, E052 Mandrágoras, E060
+ * Kobolds). This MUST match the grouping used in EntesSection (UI) — otherwise
+ * the UI shows a variant as unlocked while the bonus engine silently drops it,
+ * and loadout snapshots end up with phantom slot/hp/atk bonuses that the
+ * character sheet never sees.
+ */
+export const SPECIAL_E_VARIANT_PREFIXES = ["E005", "E052", "E060"] as const;
+
+export function getSpecialEVariantGroup(enteID: string): string | null {
+  if (!enteID) return null;
+  const upper = enteID.toUpperCase();
+  for (const prefix of SPECIAL_E_VARIANT_PREFIXES) {
+    if (upper.startsWith(prefix)) return prefix;
+  }
+  return null;
 }
 
 type Listener = (payload: any) => void;
@@ -67,11 +86,7 @@ class CharacterManager {
       discordId,
       charName,
       baseStats: { hp: 10, atk: 0, slots: 15 },
-      bonusLog: {
-        hp: {},
-        atk: {},
-        slots: {},
-      },
+      bonusLog: { hp: {}, atk: {}, slots: {} },
       tempStatBonus: { hp: 0, atk: 0, slots: 0 },
       charImage: "",
       historySum: 0,
@@ -189,10 +204,7 @@ class CharacterManager {
       .first();
 
     if (existing) {
-      const newAmount = existing.isDeleted
-        ? amount
-        : existing.amount + amount;
-
+      const newAmount = existing.isDeleted ? amount : existing.amount + amount;
       await db.entes.update(existing.id!, {
         amount: newAmount,
         unlockLevel: computeUnlockLevel(newAmount),
@@ -281,10 +293,7 @@ class CharacterManager {
       });
     triggerAutoSync();
 
-    if (
-      updates.unlockLevel !== undefined ||
-      updates.amount !== undefined
-    ) {
+    if (updates.unlockLevel !== undefined || updates.amount !== undefined) {
       await this.recalculateCharacterBonuses(characterId);
     }
 
@@ -311,7 +320,7 @@ class CharacterManager {
   private pickRandomDaruma(exclude: string) {
     const pool = [
       "E123A", "E123B", "E123C", "E123D", "E123E",
-      "E123F", "E123G", "E123H", "E123I", "E123J"
+      "E123F", "E123G", "E123H", "E123I", "E123J",
     ].filter((id) => id !== exclude.toUpperCase());
     return pool[Math.floor(Math.random() * pool.length)];
   }
@@ -334,9 +343,10 @@ class CharacterManager {
       throw new Error("Daruma not found.");
     }
 
-    const targetEnteID = (forcedTargetEnteID && forcedTargetEnteID !== sourceEnteID)
-      ? forcedTargetEnteID
-      : this.pickRandomDaruma(sourceEnteID);
+    const targetEnteID =
+      forcedTargetEnteID && forcedTargetEnteID !== sourceEnteID
+        ? forcedTargetEnteID
+        : this.pickRandomDaruma(sourceEnteID);
 
     const targetRaw = await db.entes
       .where("[characterId+enteID]")
@@ -412,22 +422,50 @@ class CharacterManager {
       .filter((e) => !e.isDeleted)
       .toArray();
 
+    // FIX: share the unlock level across E-variant siblings (E005/E052/E060),
+    // exactly the way EntesSection (UI) does. Without this the engine skipped
+    // variants whose *individual* amount was below the unlock threshold, even
+    // though the UI presented them as unlocked — which is why loadouts could
+    // list a slot bonus that the character sheet never had.
+    const groupMaxAmount = new Map<string, number>();
+    for (const ente of entes) {
+      const group = getSpecialEVariantGroup(ente.enteID);
+      if (!group) continue;
+      const amt = ente.amount ?? 0;
+      if (amt > (groupMaxAmount.get(group) ?? 0)) {
+        groupMaxAmount.set(group, amt);
+      }
+    }
+
     const engine = new StatBonusEngine(character.baseStats);
     engine.tempBonus = character.tempStatBonus;
 
+    const missingMetadata = new Set<string>();
+
     for (const ente of entes) {
-      const effectiveUnlock = computeUnlockLevel(ente.amount ?? 0);
+      const group = getSpecialEVariantGroup(ente.enteID);
+      const effectiveAmount = group
+        ? groupMaxAmount.get(group) ?? 0
+        : ente.amount ?? 0;
+
+      const effectiveUnlock = computeUnlockLevel(effectiveAmount);
       if (effectiveUnlock < 2) continue;
 
       const metadata = await getEnteMetadata(ente.enteID);
-      if (!metadata) continue;
+      if (!metadata) {
+        if (!missingMetadata.has(ente.enteID)) {
+          missingMetadata.add(ente.enteID);
+          console.warn(
+            `[recalculateCharacterBonuses] Missing metadata for ente ${ente.enteID} (character ${characterId}); skipped.`
+          );
+        }
+        continue;
+      }
 
-      engine.applyEnte(
-        ente.enteID,
-        metadata.SB ?? "",
-        effectiveUnlock,
-        { character, entes }
-      );
+      engine.applyEnte(ente.enteID, metadata.SB ?? "", effectiveUnlock, {
+        character,
+        entes,
+      });
     }
 
     await db.characters.update(characterId, {
@@ -475,11 +513,7 @@ class CharacterManager {
   async createTab(name: string): Promise<string> {
     const id = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const count = await db.tabs.count();
-    await db.tabs.add({
-      id,
-      name,
-      order: count,
-    });
+    await db.tabs.add({ id, name, order: count });
     triggerAutoSync();
     return id;
   }
@@ -534,7 +568,14 @@ class CharacterManager {
       charImage: string;
       historySum: number;
       schemaVersion: number;
-      entes: { enteID: string; amount: number; unlockLevel: number; notes?: string; customImage?: string; order: number }[];
+      entes: {
+        enteID: string;
+        amount: number;
+        unlockLevel: number;
+        notes?: string;
+        customImage?: string;
+        order: number;
+      }[];
       loadouts: { name: string; data: any }[];
     }
   ): Promise<number> {

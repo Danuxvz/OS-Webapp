@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import type { Loadout, LoadoutSlotSource } from "../../../../types";
 
 interface Props {
@@ -8,14 +8,39 @@ interface Props {
   onSave: (loadout: Loadout) => void;
 }
 
-function SlotsSection({ loadout, slotSources, slotCardSources, onSave }: Props) {
-  const slots = loadout.data.slots ?? {
-    base: 0,
-    tempBonus: 0,
-    characterTempBonus: 0,
-    sources: [],
-    cards: [],
+/**
+ * Normalize legacy loadout slot shapes. Older rows stored `slots.max` instead
+ * of `slots.base`; some were also mixed with new fields. Reading through this
+ * helper makes both shapes behave identically, and saving through it drops
+ * the stale `max` key so the row converges to the current schema.
+ */
+function normalizeSlots(raw: any): {
+  base: number;
+  tempBonus: number;
+  characterTempBonus: number;
+  sources: LoadoutSlotSource[];
+  cards: { cardId: string; quantity: number; usedIndices: number[] }[];
+} {
+  if (!raw) {
+    return { base: 0, tempBonus: 0, characterTempBonus: 0, sources: [], cards: [] };
+  }
+  return {
+    base:
+      typeof raw.base === "number"
+        ? raw.base
+        : typeof raw.max === "number"
+        ? raw.max
+        : 0,
+    tempBonus: typeof raw.tempBonus === "number" ? raw.tempBonus : 0,
+    characterTempBonus:
+      typeof raw.characterTempBonus === "number" ? raw.characterTempBonus : 0,
+    sources: Array.isArray(raw.sources) ? raw.sources : [],
+    cards: Array.isArray(raw.cards) ? raw.cards : [],
   };
+}
+
+function SlotsSection({ loadout, slotSources, slotCardSources, onSave }: Props) {
+  const slots = normalizeSlots(loadout.data?.slots);
 
   const [localTempBonus, setLocalTempBonus] = useState(String(slots.tempBonus));
 
@@ -60,7 +85,7 @@ function SlotsSection({ loadout, slotSources, slotCardSources, onSave }: Props) 
         nextCards.push({ cardId, quantity: clamped, usedIndices: [] });
       } else {
         const existing = nextCards[idx];
-        const filteredUsed = (existing.usedIndices ?? []).filter(i => i < clamped);
+        const filteredUsed = (existing.usedIndices ?? []).filter((i) => i < clamped);
         nextCards[idx] = {
           ...existing,
           quantity: clamped,
@@ -81,45 +106,38 @@ function SlotsSection({ loadout, slotSources, slotCardSources, onSave }: Props) 
     });
   };
 
-  const mergedSlotSources = useMemo(() => {
-    const savedMap = new Map((slots.sources ?? []).map((s) => [s.enteId, s]));
-    const merged: LoadoutSlotSource[] = [];
-    const liveIds = new Set<string>();
-
-    for (const live of slotSources) {
-      const saved = savedMap.get(live.enteId);
-      liveIds.add(live.enteId);
-
-      merged.push({
-        ...live,
-        enabled: saved?.enabled ?? false,
-        bonus: saved?.bonus ?? live.bonus,
-        name: saved?.name ?? live.name,
-        image: saved?.image ?? live.image,
-      });
-    }
-
-    for (const saved of slots.sources ?? []) {
-      if (!liveIds.has(saved.enteId)) merged.push(saved);
-    }
-
-    return merged;
-  }, [slots.sources, slotSources]);
+  /**
+   * FIX: build the displayed list from LIVE sources only, keeping the saved
+   * `enabled` flag as an override. This removes two classes of bug:
+   *   - Ghost sources: a saved ente that's no longer in the character's
+   *     bonus log (e.g. dropped below unlock) is simply not shown.
+   *   - Stale bonuses: new entes the character has gained since the loadout
+   *     was created show up immediately (defaulting to enabled), so every
+   *     loadout reflects the current character.
+   */
+  const savedMap = new Map((slots.sources ?? []).map((s) => [s.enteId, s]));
+  const mergedSlotSources: LoadoutSlotSource[] = slotSources.map((live) => {
+    const saved = savedMap.get(live.enteId);
+    return {
+      ...live,
+      enabled: saved?.enabled ?? live.enabled ?? true,
+    };
+  });
 
   const toggleSlotSource = (enteId: string) => {
+    const current = mergedSlotSources.find((s) => s.enteId === enteId);
+    const nextEnabled = !(current?.enabled ?? false);
+
     const nextSources = [...(slots.sources ?? [])];
     const idx = nextSources.findIndex((s) => s.enteId === enteId);
 
     if (idx === -1) {
       const source = slotSources.find((s) => s.enteId === enteId);
       if (source) {
-        nextSources.push({ ...source, enabled: true });
+        nextSources.push({ ...source, enabled: nextEnabled });
       }
     } else {
-      nextSources[idx] = {
-        ...nextSources[idx],
-        enabled: !nextSources[idx].enabled,
-      };
+      nextSources[idx] = { ...nextSources[idx], enabled: nextEnabled };
     }
 
     onSave({

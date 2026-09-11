@@ -52,13 +52,6 @@ export interface Character extends SyncMeta {
   schemaVersion: number;
   tabId?: string;
 
-  // Sharing/publishing (see BrowseNpcsPopup). isPublished makes this
-  // character (and its live entes/loadouts) visible to other users in the
-  // browse popup — it's the SAME record, so edits keep reflecting there.
-  // isImportedShared marks a local copy that came from importing someone
-  // else's published NPC; it's what puts it in the virtual "Shared" tab.
-  // Once a character is moved out of Shared via the tab select, this is
-  // cleared and it can never be set again from the UI — only Import sets it.
   isPublished?: boolean;
   isImportedShared?: boolean;
 }
@@ -144,7 +137,6 @@ export interface Tab {
 ========================= */
 
 export interface Bookmark {
-  // remote character id of the published NPC that's bookmarked
   remoteCharacterId: string;
   createdAt: number;
 }
@@ -407,7 +399,6 @@ class OpenSourceDB extends Dexie {
       `
     }).upgrade(async () => {
       // No default data needed; main/npc are virtual tabs.
-      // Existing characters will have tabId undefined (main/npc auto-classified).
     });
 
     // Version 12 – add remoteId to tabs schema (required for queries)
@@ -475,6 +466,49 @@ class OpenSourceDB extends Dexie {
           changed = true;
         }
         if (changed) await tx.table("characters").put(char);
+      }
+    });
+
+    // Version 15 – normalize legacy loadout slot shape (`slots.max` → `slots.base`)
+    this.version(15).stores({
+      // no schema change – data migration only
+    }).upgrade(async (tx) => {
+      const loadouts = await tx.table("loadouts").toArray();
+      for (const l of loadouts) {
+        const slots = l?.data?.slots;
+        if (!slots) continue;
+
+        const hasLegacyMax = typeof slots.max === "number";
+        const needsBase = typeof slots.base !== "number";
+        const needsSources = !Array.isArray(slots.sources);
+        const needsCards = !Array.isArray(slots.cards);
+        const needsTempBonus = typeof slots.tempBonus !== "number";
+        const needsCharacterTemp = typeof slots.characterTempBonus !== "number";
+
+        if (
+          !hasLegacyMax &&
+          !needsBase &&
+          !needsSources &&
+          !needsCards &&
+          !needsTempBonus &&
+          !needsCharacterTemp
+        ) {
+          continue;
+        }
+
+        l.data.slots = {
+          base: hasLegacyMax
+            ? slots.max
+            : needsBase
+            ? 0
+            : slots.base,
+          tempBonus: needsTempBonus ? 0 : slots.tempBonus,
+          characterTempBonus: needsCharacterTemp ? 0 : slots.characterTempBonus,
+          sources: needsSources ? [] : slots.sources,
+          cards: needsCards ? [] : slots.cards,
+        };
+
+        await tx.table("loadouts").put(l);
       }
     });
   }

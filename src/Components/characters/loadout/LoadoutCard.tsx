@@ -40,6 +40,76 @@ const emptyLoadoutData = {
   selectedActivaIds: [],
 };
 
+/* =========================
+   SLOT TYPES
+========================= */
+
+interface NormalizedSlotCard {
+  cardId: string;
+  quantity: number;
+  usedIndices: number[];
+}
+
+interface NormalizedSlots {
+  base: number;
+  tempBonus: number;
+  characterTempBonus: number;
+  sources: LoadoutSlotSource[];
+  cards: NormalizedSlotCard[];
+}
+
+/** Legacy rows stored `slots.max` instead of `slots.base`. Normalize on read. */
+function normalizeSlots(raw: any): NormalizedSlots {
+  if (!raw) {
+    return {
+      base: 0,
+      tempBonus: 0,
+      characterTempBonus: 0,
+      sources: [],
+      cards: [],
+    };
+  }
+  return {
+    base:
+      typeof raw.base === "number"
+        ? raw.base
+        : typeof raw.max === "number"
+        ? raw.max
+        : 0,
+    tempBonus: typeof raw.tempBonus === "number" ? raw.tempBonus : 0,
+    characterTempBonus:
+      typeof raw.characterTempBonus === "number" ? raw.characterTempBonus : 0,
+    sources: Array.isArray(raw.sources) ? (raw.sources as LoadoutSlotSource[]) : [],
+    cards: Array.isArray(raw.cards)
+      ? (raw.cards as NormalizedSlotCard[]).map((c) => ({
+          cardId: String(c.cardId),
+          quantity: Number(c.quantity) || 0,
+          usedIndices: Array.isArray(c.usedIndices)
+            ? c.usedIndices.filter((i) => typeof i === "number")
+            : [],
+        }))
+      : [],
+  };
+}
+
+/**
+ * FIX: merge live sources with the saved snapshot. The saved array is only
+ * used for the user's `enabled` override; bonus/name/image always come from
+ * the live source. Saved sources that no longer exist live (ghosts) are
+ * dropped, and new live sources default to enabled.
+ */
+function mergeLiveWithSaved<T extends { enteId: string; enabled?: boolean }>(
+  live: T[],
+  saved: T[] | undefined
+): T[] {
+  const savedMap = new Map((saved ?? []).map((s) => [s.enteId, s]));
+  return live.map((l) => {
+    const s = savedMap.get(l.enteId);
+    if (!s) return l;
+    return { ...l, enabled: s.enabled ?? l.enabled ?? true };
+  });
+}
+
 function LoadoutCard({
   loadout,
   hpSources,
@@ -57,7 +127,6 @@ function LoadoutCard({
   const [popupSection, setPopupSection] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
 
-  // Always keep a ref to the latest loadout prop
   const loadoutRef = useRef(loadout);
   useEffect(() => {
     loadoutRef.current = loadout;
@@ -81,7 +150,6 @@ function LoadoutCard({
   );
   const [localNotes, setLocalNotes] = useState(data.notes ?? "");
 
-  // Sync local state when the loadout changes externally
   useEffect(() => {
     setLocalName(loadout.name);
     setLocalHpCurrent(String(loadout.data?.hp?.baseCurrent ?? 0));
@@ -99,13 +167,18 @@ function LoadoutCard({
   const weapon = data.weapon ?? emptyLoadoutData.weapon;
   const he = data.habilidadesPasivas ?? emptyLoadoutData.habilidadesPasivas;
   const armorClass = data.armorClass ?? emptyLoadoutData.armorClass;
-  const slots = data.slots ?? emptyLoadoutData.slots;
+  const slots = normalizeSlots(data.slots);
   const notes = data.notes ?? "";
   const customHE = data.customHE ?? [];
   const customActivas = data.habilidadesActivas ?? [];
   const activeAEIds = data.activeAEIds ?? [];
 
-  const enabledHpBonus = (hp.sources ?? [])
+  // Live-merged source lists (saved snapshot used only for `enabled` overrides)
+  const liveHpSources = mergeLiveWithSaved(hpSources, hp.sources);
+  const liveAtkSources = mergeLiveWithSaved(atkSources, atk.sources);
+  const liveSlotSources = mergeLiveWithSaved(slotSources, slots.sources);
+
+  const enabledHpBonus = liveHpSources
     .filter((s) => s.enabled)
     .reduce((sum, s) => sum + (s.bonus || 0), 0);
 
@@ -115,7 +188,7 @@ function LoadoutCard({
     (hp.tempBonus || 0) +
     enabledHpBonus;
 
-  const enabledAtkBonus = (atk.sources ?? [])
+  const enabledAtkBonus = liveAtkSources
     .filter((s) => s.enabled)
     .reduce((sum, s) => sum + (s.bonus || 0), 0);
 
@@ -174,7 +247,7 @@ function LoadoutCard({
     ? "None"
     : `${armorClass.type} ${armorClass.name} +${armorClass.bonus}`;
 
-  const enabledSlotBonus = (slots.sources ?? [])
+  const enabledSlotBonus = liveSlotSources
     .filter((s) => s.enabled)
     .reduce((sum, s) => sum + (s.bonus || 0), 0);
 
@@ -184,28 +257,38 @@ function LoadoutCard({
     (slots.tempBonus || 0) +
     enabledSlotBonus;
 
-  const slotBoxItems = (slots.cards ?? []).flatMap((card) =>
+  interface SlotBoxItem {
+    cardId: string;
+    index: number;
+    used: boolean;
+  }
+
+  const slotBoxItems: SlotBoxItem[] = slots.cards.flatMap((card) =>
     Array.from({ length: card.quantity }, (_, index) => ({
       cardId: card.cardId,
       index,
-      used: (card.usedIndices ?? []).includes(index),
+      used: card.usedIndices.includes(index),
     }))
   );
 
-  const usedSlots = slotBoxItems.filter((item) => item.used).length;
+  const usedSlots = slotBoxItems.filter((item: SlotBoxItem) => item.used).length;
 
   const handleToggleSlot = (cardId: string, index: number) => {
     const currentLoadout = loadoutRef.current;
     const currentData = currentLoadout.data ?? emptyLoadoutData;
-    const currentSlots = currentData.slots ?? emptyLoadoutData.slots;
+    const currentSlots = normalizeSlots(currentData.slots);
 
-    const nextCards = [...(currentSlots.cards ?? [])];
+    const nextCards = currentSlots.cards.map((c) => ({
+      ...c,
+      usedIndices: [...c.usedIndices],
+    }));
+
     const card = nextCards.find((c) => c.cardId === cardId);
     if (!card) return;
 
-    const usedSet = new Set(card.usedIndices ?? []);
+    const usedSet = new Set<number>(card.usedIndices);
     const totalUsed = nextCards.reduce(
-      (sum, c) => sum + (c.usedIndices ?? []).length,
+      (sum, c) => sum + c.usedIndices.length,
       0
     );
 
@@ -216,7 +299,9 @@ function LoadoutCard({
       usedSet.add(index);
     }
 
-    card.usedIndices = Array.from(usedSet).sort((a, b) => a - b);
+    card.usedIndices = Array.from(usedSet).sort(
+      (a: number, b: number) => a - b
+    );
 
     onUpdate({
       ...currentLoadout,
@@ -272,10 +357,7 @@ function LoadoutCard({
   const commitName = () => {
     const currentLoadout = loadoutRef.current;
     if (localName !== currentLoadout.name) {
-      onUpdate({
-        ...currentLoadout,
-        name: localName,
-      });
+      onUpdate({ ...currentLoadout, name: localName });
     }
   };
 
@@ -284,10 +366,7 @@ function LoadoutCard({
     const currentHp = currentLoadout.data?.hp ?? emptyLoadoutData.hp;
     const num = Number(localHpCurrent);
     if (!isNaN(num) && num !== currentHp.baseCurrent) {
-      updateHp({
-        ...currentHp,
-        baseCurrent: num,
-      });
+      updateHp({ ...currentHp, baseCurrent: num });
     }
   };
 
@@ -522,7 +601,7 @@ function LoadoutCard({
             </div>
             {slotBoxItems.length > 0 && (
               <div className="slot-grid mt-2">
-                {slotBoxItems.map((item) => {
+                {slotBoxItems.map((item: SlotBoxItem) => {
                   const cardMeta = slotCardSources.find(
                     (c) => c.cardId === item.cardId
                   );
