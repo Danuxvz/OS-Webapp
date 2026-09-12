@@ -24,10 +24,7 @@ export function computeUnlockLevel(amount: number) {
 /**
  * E-series variant groups. All variants of a given base share the *highest*
  * unlock level in their group (E005 Tsuchigumo, E052 Mandrágoras, E060
- * Kobolds). This MUST match the grouping used in EntesSection (UI) — otherwise
- * the UI shows a variant as unlocked while the bonus engine silently drops it,
- * and loadout snapshots end up with phantom slot/hp/atk bonuses that the
- * character sheet never sees.
+ * Kobolds). This MUST match the grouping used in EntesSection (UI).
  */
 export const SPECIAL_E_VARIANT_PREFIXES = ["E005", "E052", "E060"] as const;
 
@@ -38,6 +35,21 @@ export function getSpecialEVariantGroup(enteID: string): string | null {
     if (upper.startsWith(prefix)) return prefix;
   }
   return null;
+}
+
+/**
+ * Shared NPC classifier. A character is a "main" only if it came from a
+ * Discord export AND is not assigned to a custom tab. Everything else
+ * (custom tabs, NPC tab, shared imports) is treated as an NPC.
+ *
+ * This MUST stay in sync with `isNpcMode` in App.tsx — otherwise the bonus
+ * engine and the character sheet will disagree about whether slots should
+ * be merged into HP.
+ */
+export function isNpcCharacter(
+  char: Pick<Character, "externalId" | "tabId">
+): boolean {
+  return !(Boolean(char.externalId) && !char.tabId);
 }
 
 type Listener = (payload: any) => void;
@@ -53,9 +65,6 @@ export type DarumaSwapResult = {
 class CharacterManager {
   private listeners: Map<string, Set<Listener>> = new Map();
 
-  /* =========================
-     Event emitter helpers
-  ========================= */
   on(event: string, cb: Listener) {
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(cb);
@@ -301,9 +310,6 @@ class CharacterManager {
     this.emit("entesUpdated", { characterId, entes });
   }
 
-  /**
-   * Public helper to emit an entesUpdated event after external (sync) changes.
-   */
   async emitEntesUpdated(characterId: number) {
     const entes = await this.getEntes(characterId);
     this.emit("entesUpdated", { characterId, entes });
@@ -423,10 +429,7 @@ class CharacterManager {
       .toArray();
 
     // FIX: share the unlock level across E-variant siblings (E005/E052/E060),
-    // exactly the way EntesSection (UI) does. Without this the engine skipped
-    // variants whose *individual* amount was below the unlock threshold, even
-    // though the UI presented them as unlocked — which is why loadouts could
-    // list a slot bonus that the character sheet never had.
+    // exactly the way EntesSection (UI) does.
     const groupMaxAmount = new Map<string, number>();
     for (const ente of entes) {
       const group = getSpecialEVariantGroup(ente.enteID);
@@ -466,6 +469,22 @@ class CharacterManager {
         character,
         entes,
       });
+    }
+
+    // NPCs have no Slots stat — any SB that would grant slots is folded into
+    // HP instead, entry by entry, so the loadout's HP total lines up with the
+    // character sheet's HP total. Main characters are unaffected.
+    if (isNpcCharacter(character)) {
+      const slotsLog = { ...engine.bonusLog.slots };
+      engine.bonusLog.slots = {};
+      for (const [enteId, slotVal] of Object.entries(slotsLog)) {
+        const merged = (engine.bonusLog.hp[enteId] ?? 0) + (Number(slotVal) || 0);
+        if (merged !== 0) {
+          engine.bonusLog.hp[enteId] = merged;
+        } else {
+          delete engine.bonusLog.hp[enteId];
+        }
+      }
     }
 
     await db.characters.update(characterId, {
@@ -636,7 +655,7 @@ class CharacterManager {
   }
 
   /* =========================
-     BOOKMARKS (browse-NPCs popup)
+     BOOKMARKS
   ========================= */
 
   async getBookmarks(): Promise<Bookmark[]> {

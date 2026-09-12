@@ -23,7 +23,7 @@ function SectionNav({
 
       {isNpcMode ? (
         <>
-          {/* NPC order: NPC Maker first */}
+          {/* NPCs have no inventory and default to the NPC Maker */}
           <button
             className={`tab-btn ${activeSection === "loadout" ? "active" : ""}`}
             onClick={() => setActiveSection("loadout")}
@@ -37,17 +37,9 @@ function SectionNav({
           >
             Entes
           </button>
-
-          <button
-            className={`tab-btn ${activeSection === "inventario" ? "active" : ""}`}
-            onClick={() => setActiveSection("inventario")}
-          >
-            Inventario
-          </button>
         </>
       ) : (
         <>
-          {/* Main order: Entes, Loadout, Inventario */}
           <button
             className={`tab-btn ${activeSection === "entes" ? "active" : ""}`}
             onClick={() => setActiveSection("entes")}

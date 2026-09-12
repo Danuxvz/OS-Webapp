@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import type { MouseEvent } from "react";
 import type { Character, Tab } from "../characters/database/db";
-import { characterManager } from "../characters/CharacterManager";
+import { characterManager, isNpcCharacter } from "../characters/CharacterManager";
 import { deleteRemoteCharacter } from "../../services/Sync.tsx";
 import "../ComponentStyles/PublishToggle.scss";
 
@@ -145,6 +145,13 @@ const CharacterDetails = React.memo(function CharacterDetails({
     );
   }
 
+  // NPCs don't use a Slots stat — the bonus engine folds any slot-granting
+  // SBs into HP, and we hide the row entirely here. Main characters keep
+  // the full HP / ATK / Slots breakdown.
+  const isNpc = isNpcCharacter(localChar);
+
+  const statsToShow: StatKey[] = isNpc ? ["hp", "atk"] : ["hp", "atk", "slots"];
+
   const totalStats = useMemo(() => {
     return {
       hp: localChar.baseStats.hp + sumBonus("hp") + localChar.tempStatBonus.hp,
@@ -175,8 +182,6 @@ const CharacterDetails = React.memo(function CharacterDetails({
   const handleTabChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
 
-    // If value is "shared" we need to set isImportedShared = true and tabId = null
-    // Otherwise, normal tab assignment.
     if (value === "shared") {
       if (onMoveToTab) {
         await onMoveToTab(character.id!, null);
@@ -287,7 +292,7 @@ const CharacterDetails = React.memo(function CharacterDetails({
           </div>
         )}
 
-        {(["hp", "atk", "slots"] as StatKey[]).map((stat) => (
+        {statsToShow.map((stat) => (
           <div key={stat} className="stats">
             <p
               style={{ cursor: "pointer", fontWeight: 600 }}

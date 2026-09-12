@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import './App.scss'
 import ControlPanel from './Components/SideBar/SideBar.tsx'
 import SectionNav from './Components/SectionNav.tsx'
 import CharacterSheet from './Components/characters/CharacterSheet.tsx'
-import { characterManager } from './Components/characters/CharacterManager.tsx'
+import { characterManager, isNpcCharacter } from './Components/characters/CharacterManager.tsx'
 import type { Character } from './Components/characters/database/db.ts'
 import { preloadMetadata, refreshMetadataIfChanged } from './services/enteMetadataService.ts'
 
@@ -17,10 +17,12 @@ function App({ discordId }: { discordId: string | null }) {
   // Sidebar tab state (controlled from App)
   const [activeTabId, setActiveTabId] = useState<string>("main")
 
-  // On every page load, re-fetch ente metadata from the sheets (bypassing
-  // the localStorage cache). If it actually changed, bump metadataVersion
-  // so the entes list remounts and picks up the new data — this runs in
-  // parallel with character loading below, not blocking first paint.
+  // Track whether the section default has been applied for the first
+  // character this session. After that, we preserve the user's choice
+  // across character switches, only redirecting when the current section
+  // is invalid for the new character.
+  const sectionInitializedRef = useRef(false);
+
   useEffect(() => {
     refreshMetadataIfChanged()
       .then((changed) => {
@@ -29,7 +31,6 @@ function App({ discordId }: { discordId: string | null }) {
       .catch((err) => console.warn("Failed to refresh ente metadata:", err));
   }, []);
 
-  // Persist activeCharacterId to localStorage whenever it changes
   useEffect(() => {
     if (activeCharacterId != null) {
       localStorage.setItem('lastActiveCharacterId', String(activeCharacterId));
@@ -67,7 +68,6 @@ function App({ discordId }: { discordId: string | null }) {
 
       setCharacters(chars);
 
-      // Restore last active character ID from localStorage
       const savedId = localStorage.getItem('lastActiveCharacterId');
       if (savedId) {
         const id = Number(savedId);
@@ -78,7 +78,6 @@ function App({ discordId }: { discordId: string | null }) {
         }
       }
 
-      // Fallback to first character
       setActiveCharacterId(chars[0]?.id ?? null);
       preloadMetadata();
     }
@@ -97,19 +96,18 @@ function App({ discordId }: { discordId: string | null }) {
     };
   }, [discordId, refreshCharacters]);
 
-  // The selected character object, if any
   const activeCharacter = useMemo(() => {
     if (!activeCharacterId) return null;
     return characters.find((c) => c.id === activeCharacterId) ?? null;
   }, [characters, activeCharacterId]);
 
-  // Sync active sidebar tab whenever the active character changes
+  const activeIsNpc = activeCharacter ? isNpcCharacter(activeCharacter) : false;
+
+  // Keep the sidebar tab in sync when the active character changes.
   useEffect(() => {
     if (!activeCharacter) return;
 
-    // Determine which tab the active character belongs to
     let targetTab = "main";
-
     if (activeCharacter.isImportedShared) {
       targetTab = "shared";
     } else if (activeCharacter.tabId) {
@@ -121,15 +119,26 @@ function App({ discordId }: { discordId: string | null }) {
     setActiveTabId(targetTab);
   }, [activeCharacter]);
 
-  // NPC mode is true only when a character is selected AND that character is NOT a main character
-  const isNpcMode = Boolean(
-    activeCharacter && !(activeCharacter.externalId && !activeCharacter.tabId)
-  );
+
+  useEffect(() => {
+    if (!activeCharacter) return;
+
+    if (!sectionInitializedRef.current) {
+      sectionInitializedRef.current = true;
+      setActiveSection(activeIsNpc ? "loadout" : "entes");
+      return;
+    }
+
+    if (activeIsNpc) {
+      setActiveSection((prev) => (prev === "inventario" ? "loadout" : prev));
+    }
+  }, [activeCharacter?.id, activeIsNpc]);
+
+  const isNpcMode = activeIsNpc;
 
   return (
     <div className="container-fluid vh-100">
       <div className="row h-100">
-        {/* Left panel */}
         <div className={`sidebar g-0 ${sidebarHidden ? 'hidden' : ''}`}>
           <ControlPanel
             sidebarHidden={sidebarHidden}
@@ -143,7 +152,6 @@ function App({ discordId }: { discordId: string | null }) {
           />
         </div>
 
-        {/* Sidebar overlay – mobile only, taps close sidebar */}
         {!sidebarHidden && (
           <div
             className="sidebar-overlay"
@@ -151,7 +159,6 @@ function App({ discordId }: { discordId: string | null }) {
           />
         )}
 
-        {/* Right panel */}
         <div className="col d-flex flex-column p-0">
           <div className="d-flex align-items-center">
             <div className="main">

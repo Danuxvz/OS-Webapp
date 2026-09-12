@@ -158,7 +158,6 @@ class OpenSourceDB extends Dexie {
   constructor() {
     super("OpenSourceDB");
 
-    // Version 7 (existing)
     this.version(7).stores({
       users: "discordId",
       characters: `
@@ -251,41 +250,17 @@ class OpenSourceDB extends Dexie {
         let changed = false;
 
         if (data?.hp) {
-          if (!Array.isArray(data.hp.sources)) {
-            data.hp.sources = [];
-            changed = true;
-          }
-          if (typeof data.hp.characterTempBonus !== "number") {
-            data.hp.characterTempBonus = 0;
-            changed = true;
-          }
-          if (typeof data.hp.tempBonus !== "number") {
-            data.hp.tempBonus = 0;
-            changed = true;
-          }
-          if (typeof data.hp.baseCurrent !== "number") {
-            data.hp.baseCurrent = data.hp.baseMax ?? 0;
-            changed = true;
-          }
-          if (!Array.isArray(data.hp.barriers)) {
-            data.hp.barriers = [];
-            changed = true;
-          }
+          if (!Array.isArray(data.hp.sources)) { data.hp.sources = []; changed = true; }
+          if (typeof data.hp.characterTempBonus !== "number") { data.hp.characterTempBonus = 0; changed = true; }
+          if (typeof data.hp.tempBonus !== "number") { data.hp.tempBonus = 0; changed = true; }
+          if (typeof data.hp.baseCurrent !== "number") { data.hp.baseCurrent = data.hp.baseMax ?? 0; changed = true; }
+          if (!Array.isArray(data.hp.barriers)) { data.hp.barriers = []; changed = true; }
         }
 
         if (data?.atk) {
-          if (!Array.isArray(data.atk.sources)) {
-            data.atk.sources = [];
-            changed = true;
-          }
-          if (typeof data.atk.characterTempBonus !== "number") {
-            data.atk.characterTempBonus = 0;
-            changed = true;
-          }
-          if (typeof data.atk.tempBonus !== "number") {
-            data.atk.tempBonus = 0;
-            changed = true;
-          }
+          if (!Array.isArray(data.atk.sources)) { data.atk.sources = []; changed = true; }
+          if (typeof data.atk.characterTempBonus !== "number") { data.atk.characterTempBonus = 0; changed = true; }
+          if (typeof data.atk.tempBonus !== "number") { data.atk.tempBonus = 0; changed = true; }
         }
 
         if (data?.slots) {
@@ -299,66 +274,33 @@ class OpenSourceDB extends Dexie {
             };
             changed = true;
           } else {
-            if (typeof data.slots.base !== "number") {
-              data.slots.base = 0;
-              changed = true;
-            }
-            if (typeof data.slots.tempBonus !== "number") {
-              data.slots.tempBonus = 0;
-              changed = true;
-            }
-            if (typeof data.slots.characterTempBonus !== "number") {
-              data.slots.characterTempBonus = 0;
-              changed = true;
-            }
-            if (!Array.isArray(data.slots.sources)) {
-              data.slots.sources = [];
-              changed = true;
-            }
-            if (!Array.isArray(data.slots.cards)) {
-              data.slots.cards = [];
-              changed = true;
-            }
+            if (typeof data.slots.base !== "number") { data.slots.base = 0; changed = true; }
+            if (typeof data.slots.tempBonus !== "number") { data.slots.tempBonus = 0; changed = true; }
+            if (typeof data.slots.characterTempBonus !== "number") { data.slots.characterTempBonus = 0; changed = true; }
+            if (!Array.isArray(data.slots.sources)) { data.slots.sources = []; changed = true; }
+            if (!Array.isArray(data.slots.cards)) { data.slots.cards = []; changed = true; }
           }
         }
 
         if (data?.habilidadesPasivas) {
           if (Array.isArray(data.habilidadesPasivas)) {
-            data.habilidadesPasivas = {
-              max: 2,
-              selectedIds: data.habilidadesPasivas,
-            };
+            data.habilidadesPasivas = { max: 2, selectedIds: data.habilidadesPasivas };
             changed = true;
           } else {
-            if (typeof data.habilidadesPasivas.max !== "number") {
-              data.habilidadesPasivas.max = 2;
-              changed = true;
-            }
-            if (!Array.isArray(data.habilidadesPasivas.selectedIds)) {
-              data.habilidadesPasivas.selectedIds = [];
-              changed = true;
-            }
+            if (typeof data.habilidadesPasivas.max !== "number") { data.habilidadesPasivas.max = 2; changed = true; }
+            if (!Array.isArray(data.habilidadesPasivas.selectedIds)) { data.habilidadesPasivas.selectedIds = []; changed = true; }
           }
         }
 
-        if (l.isDeleted === undefined) {
-          l.isDeleted = false;
-          changed = true;
-        }
+        if (l.isDeleted === undefined) { l.isDeleted = false; changed = true; }
 
         if (changed) {
-          await tx.table("loadouts").put({
-            ...l,
-            data
-          });
+          await tx.table("loadouts").put({ ...l, data });
         }
       }
     });
 
-    // Version 9 – add isDeleted to entes
-    this.version(9).stores({
-      // no schema changes, just data migration
-    }).upgrade(async (tx) => {
+    this.version(9).stores({}).upgrade(async (tx) => {
       const entes = await tx.table("entes").toArray();
       for (const ente of entes) {
         if (ente.isDeleted === undefined) {
@@ -368,10 +310,7 @@ class OpenSourceDB extends Dexie {
       }
     });
 
-    // Version 10 – add customItems to inventory
-    this.version(10).stores({
-      // no schema changes (customItems is just a JSON property)
-    }).upgrade(async (tx) => {
+    this.version(10).stores({}).upgrade(async (tx) => {
       const inventories = await tx.table("inventory").toArray();
       for (const inv of inventories) {
         if (!Array.isArray(inv.customItems)) {
@@ -397,9 +336,7 @@ class OpenSourceDB extends Dexie {
         id,
         order
       `
-    }).upgrade(async () => {
-      // No default data needed; main/npc are virtual tabs.
-    });
+    }).upgrade(async () => {});
 
     // Version 12 – add remoteId to tabs schema (required for queries)
     this.version(12).stores({
@@ -457,22 +394,13 @@ class OpenSourceDB extends Dexie {
       const characters = await tx.table("characters").toArray();
       for (const char of characters) {
         let changed = false;
-        if (char.isPublished === undefined) {
-          char.isPublished = false;
-          changed = true;
-        }
-        if (char.isImportedShared === undefined) {
-          char.isImportedShared = false;
-          changed = true;
-        }
+        if (char.isPublished === undefined) { char.isPublished = false; changed = true; }
+        if (char.isImportedShared === undefined) { char.isImportedShared = false; changed = true; }
         if (changed) await tx.table("characters").put(char);
       }
     });
 
-    // Version 15 – normalize legacy loadout slot shape (`slots.max` → `slots.base`)
-    this.version(15).stores({
-      // no schema change – data migration only
-    }).upgrade(async (tx) => {
+    this.version(15).stores({}).upgrade(async (tx) => {
       const loadouts = await tx.table("loadouts").toArray();
       for (const l of loadouts) {
         const slots = l?.data?.slots;
@@ -486,22 +414,12 @@ class OpenSourceDB extends Dexie {
         const needsCharacterTemp = typeof slots.characterTempBonus !== "number";
 
         if (
-          !hasLegacyMax &&
-          !needsBase &&
-          !needsSources &&
-          !needsCards &&
-          !needsTempBonus &&
-          !needsCharacterTemp
-        ) {
-          continue;
-        }
+          !hasLegacyMax && !needsBase && !needsSources &&
+          !needsCards && !needsTempBonus && !needsCharacterTemp
+        ) continue;
 
         l.data.slots = {
-          base: hasLegacyMax
-            ? slots.max
-            : needsBase
-            ? 0
-            : slots.base,
+          base: hasLegacyMax ? slots.max : needsBase ? 0 : slots.base,
           tempBonus: needsTempBonus ? 0 : slots.tempBonus,
           characterTempBonus: needsCharacterTemp ? 0 : slots.characterTempBonus,
           sources: needsSources ? [] : slots.sources,
@@ -509,6 +427,39 @@ class OpenSourceDB extends Dexie {
         };
 
         await tx.table("loadouts").put(l);
+      }
+    });
+
+    // Version 16 – fold any pre-existing NPC slot bonuses into HP.
+    //
+    // NPCs don't use a Slots stat anymore; any SB that granted slots now adds
+    // to HP instead. The bonus engine does this on every recalc for new data,
+    // but existing characters whose `bonusLog` was computed before this change
+    // still carry the old split. This pass merges them once so the UI is
+    // consistent immediately, without waiting for the next ente edit.
+    this.version(16).stores({}).upgrade(async (tx) => {
+      const characters = await tx.table("characters").toArray();
+      for (const char of characters) {
+        const isNpc = !(Boolean(char.externalId) && !char.tabId);
+        if (!isNpc) continue;
+
+        const slots = char.bonusLog?.slots ?? {};
+        if (Object.keys(slots).length === 0) continue;
+
+        const hp: Record<string, number> = { ...(char.bonusLog?.hp ?? {}) };
+        for (const [enteId, slotVal] of Object.entries(slots)) {
+          const merged = (hp[enteId] ?? 0) + (Number(slotVal) || 0);
+          if (merged !== 0) hp[enteId] = merged;
+          else delete hp[enteId];
+        }
+
+        char.bonusLog = {
+          hp,
+          atk: char.bonusLog?.atk ?? {},
+          slots: {},
+        };
+
+        await tx.table("characters").put(char);
       }
     });
   }
