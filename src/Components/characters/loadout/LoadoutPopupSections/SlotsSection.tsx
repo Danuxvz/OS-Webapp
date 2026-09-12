@@ -106,21 +106,13 @@ function SlotsSection({ loadout, slotSources, slotCardSources, onSave }: Props) 
     });
   };
 
-  /**
-   * FIX: build the displayed list from LIVE sources only, keeping the saved
-   * `enabled` flag as an override. This removes two classes of bug:
-   *   - Ghost sources: a saved ente that's no longer in the character's
-   *     bonus log (e.g. dropped below unlock) is simply not shown.
-   *   - Stale bonuses: new entes the character has gained since the loadout
-   *     was created show up immediately (defaulting to enabled), so every
-   *     loadout reflects the current character.
-   */
+  /*Build the displayed list from LIVE sources only,*/
   const savedMap = new Map((slots.sources ?? []).map((s) => [s.enteId, s]));
   const mergedSlotSources: LoadoutSlotSource[] = slotSources.map((live) => {
     const saved = savedMap.get(live.enteId);
     return {
       ...live,
-      enabled: saved?.enabled ?? live.enabled ?? true,
+      enabled: saved?.enabled ?? false,
     };
   });
 

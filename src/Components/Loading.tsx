@@ -33,8 +33,12 @@ function Loading({ step, error }: LoadingProps) {
   return (
     <div className="loading-screen">
       <div className="loading-card">
-        <div className="loading-logo">OS</div>
-        <h1 className="loading-title">OS Bot WebApp</h1>
+        <img
+          className="loading-logo"
+          src="/LOGO.svg"
+          alt="Open;Source"
+        />
+        <h1 className="loading-title">Open;Source Online Inventory</h1>
 
         {error ? (
           <>

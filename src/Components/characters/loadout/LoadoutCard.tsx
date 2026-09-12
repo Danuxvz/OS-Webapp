@@ -81,6 +81,17 @@ function normalizeSlots(raw: any): NormalizedSlots {
   };
 }
 
+/**
+ * Merge live sources with the saved snapshot. The saved array is the
+ * authoritative record of which sources were part of this loadout and which
+ * the user enabled/disabled.
+ *
+ * Crucial default: any source present in `live` but NOT in `saved` was added
+ * to the character AFTER this loadout was created. Those default to DISABLED
+ * so they don't silently inflate the loadout's totals — the user must opt in
+ * per-loadout. This is what keeps old loadouts stable as the ente collection
+ * grows.
+ */
 function mergeLiveWithSaved<T extends { enteId: string; enabled?: boolean }>(
   live: T[],
   saved: T[] | undefined
@@ -88,8 +99,7 @@ function mergeLiveWithSaved<T extends { enteId: string; enabled?: boolean }>(
   const savedMap = new Map((saved ?? []).map((s) => [s.enteId, s]));
   return live.map((l) => {
     const s = savedMap.get(l.enteId);
-    if (!s) return l;
-    return { ...l, enabled: s.enabled ?? l.enabled ?? true };
+    return { ...l, enabled: s?.enabled ?? false };
   });
 }
 
@@ -380,9 +390,6 @@ function LoadoutCard({
     setLocalBarrierAmounts((prev) => ({ ...prev, [id]: value }));
   };
 
-  // Commit on Enter as well as onBlur — mobile browsers don't reliably fire
-  // blur when the user taps away from a text input, which is how name / hp
-  // edits were silently getting dropped.
   const commitOnEnter = (handler: () => void) => (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       (e.target as HTMLInputElement).blur();

@@ -1121,15 +1121,6 @@ export async function syncAll() {
 
 export type SyncProgressFn = (label: string, index: number, total: number) => void;
 
-/**
- * Same steps as `syncAll`, but reports the current step name + index before
- * running it. Used by the bootstrap loading screen so the user can see which
- * phase is running (and, if the elapsed timer is climbing on the same label,
- * which phase is hung).
- *
- * Keep this list in sync with the body of `syncAll` above — if you add a
- * step to one, add it to the other.
- */
 export async function syncAllWithProgress(onProgress?: SyncProgressFn) {
   const steps: Array<[string, () => Promise<void>]> = [
     ["Cleaning up duplicates", deduplicateCharacters],
