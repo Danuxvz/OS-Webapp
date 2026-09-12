@@ -539,7 +539,7 @@ function LoadoutCard({
         {/* HE Display */}
         <div className="mb-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="fw-semibold">Habilidades Pasivas:</span>
+            <span className="h5 mt-3 fw-bold">Habilidades Pasivas:</span>
             {configOpen && (
               <button
                 className="btn btn-link btn-sm p-0"
@@ -566,29 +566,31 @@ function LoadoutCard({
         {/* AC Display */}
         <div className="mb-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            <span className="fw-semibold">Armor Class:</span>
-            <span>{acDisplay}</span>
-            {configOpen && (
-              <button
-                className="btn btn-link btn-sm p-0"
-                onClick={() => setPopupSection("ac")}
-              >
-                ⚙
-              </button>
-            )}
-          </div>
-          {armorClass.text && (
-            <div className="small text-muted mt-1">
-              {acEffectText || acTitleLine}
+            <span className="h5 mt-3 fw-bold">Armor Class:</span>
+              <div>
+                <span>{acDisplay}</span>
+                {configOpen && (
+                  <button
+                    className="btn btn-link btn-sm p-0"
+                    onClick={() => setPopupSection("ac")}
+                  >
+                    ⚙
+                  </button>
+                )}
+                {armorClass.text && (
+                  <div className="small text-muted mt-1">
+                    {acEffectText || acTitleLine}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
         </div>
 
         {/* Slots display – hidden in NPC mode */}
         {!isNpcMode && (
           <div className="mb-2">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <span className="fw-semibold">Slots:</span>
+              <span className="h5 mt-3 fw-bold">Slots:</span>
               <span>
                 {Math.max(0, totalSlots - usedSlots)} / {totalSlots}
               </span>
@@ -632,7 +634,7 @@ function LoadoutCard({
         {isNpcMode && (
           <div className="mb-2">
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <span className="fw-semibold">Habilidades Activas:</span>
+              <span className="h5 mt-3 fw-bold">Habilidades Activas:</span>
               {configOpen && (
                 <button
                   className="btn btn-link btn-sm p-0"
