@@ -411,7 +411,7 @@ function LoadoutCard({
                 onKeyDown={commitOnEnter(commitName)}
               />
             ) : (
-              <h3 className="h5 mb-1">{loadout.name}</h3>
+              <h3 className="h3 mb-1">{loadout.name}</h3>
             )}
           </div>
 
