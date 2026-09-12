@@ -6,6 +6,7 @@ import CharacterSheet from './Components/characters/CharacterSheet.tsx'
 import { characterManager, isNpcCharacter } from './Components/characters/CharacterManager.tsx'
 import type { Character } from './Components/characters/database/db.ts'
 import { preloadMetadata, refreshMetadataIfChanged } from './services/enteMetadataService.ts'
+import { preloadFactions } from './services/FactionService.ts'
 
 function App({ discordId }: { discordId: string | null }) {
   const [characters, setCharacters] = useState<Character[]>([])
@@ -14,13 +15,7 @@ function App({ discordId }: { discordId: string | null }) {
   const [activeSection, setActiveSection] = useState<"loadout" | "entes" | "inventario">("entes")
   const [metadataVersion, setMetadataVersion] = useState(0)
 
-  // Sidebar tab state (controlled from App)
   const [activeTabId, setActiveTabId] = useState<string>("main")
-
-  // Track whether the section default has been applied for the first
-  // character this session. After that, we preserve the user's choice
-  // across character switches, only redirecting when the current section
-  // is invalid for the new character.
   const sectionInitializedRef = useRef(false);
 
   useEffect(() => {
@@ -68,18 +63,20 @@ function App({ discordId }: { discordId: string | null }) {
 
       setCharacters(chars);
 
+      // Preload ente metadata + faction sheet + faction colors in parallel.
+      preloadMetadata();
+      preloadFactions();
+
       const savedId = localStorage.getItem('lastActiveCharacterId');
       if (savedId) {
         const id = Number(savedId);
         if (chars.some(c => c.id === id)) {
           setActiveCharacterId(id);
-          preloadMetadata();
           return;
         }
       }
 
       setActiveCharacterId(chars[0]?.id ?? null);
-      preloadMetadata();
     }
 
     init();
@@ -103,7 +100,6 @@ function App({ discordId }: { discordId: string | null }) {
 
   const activeIsNpc = activeCharacter ? isNpcCharacter(activeCharacter) : false;
 
-  // Keep the sidebar tab in sync when the active character changes.
   useEffect(() => {
     if (!activeCharacter) return;
 
@@ -118,7 +114,6 @@ function App({ discordId }: { discordId: string | null }) {
 
     setActiveTabId(targetTab);
   }, [activeCharacter]);
-
 
   useEffect(() => {
     if (!activeCharacter) return;

@@ -187,108 +187,55 @@
 }
 
 /* ============================
-   FACTIONS (read-only)
+   FACTION BOONS (unlocked only)
 ============================ */
 .factions-section {
   margin-bottom: 1.5rem;
 }
 
-.faction-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.75rem;
+.boon-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-.faction-card {
+.boon-card {
   background: #1a1a1a;
   border: 1px solid #333;
-  border-radius: 0.6rem;
-  padding: 0.75rem 0.9rem;
+  /* Default accent; overridden inline per-card with the faction's color. */
+  border-left: 3px solid #6200ea;
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.9rem;
 }
 
-.faction-header {
+.boon-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.6rem;
+  align-items: baseline;
+  gap: 0.55rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
 }
 
-.faction-name {
-  font-size: 1.05rem;
+.boon-faction {
   font-weight: 700;
   letter-spacing: 0.02em;
+  /* Color set inline per-card. */
+}
+
+.boon-rank {
+  color: #8a8a8a;
+}
+
+.boon-title {
+  font-weight: 600;
+  font-size: 0.95rem;
   color: #e8e8e8;
+  margin-bottom: 0.25rem;
 }
 
-.faction-current {
-  font-size: 0.85rem;
-  color: #b5b5b5;
-
-  b {
-    color: #c8a4ff;
-    font-weight: 600;
-  }
-}
-
-.faction-ranks {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-
-.rank-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  border: 1px solid transparent;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  user-select: none;
-
-  .rank-letter {
-    font-weight: 700;
-    font-size: 0.75rem;
-  }
-
-  .rank-name {
-    font-size: 0.72rem;
-  }
-}
-
-.rank-chip.unlocked {
-  background: rgba(98, 0, 234, 0.18);
-  border-color: #6200ea;
-  color: #fff;
-
-  .rank-letter {
-    color: #b388ff;
-  }
-}
-
-.rank-chip.locked {
-  background: #232323;
-  border-color: #333;
-  color: #666;
-
-  .rank-letter {
-    color: #555;
-  }
-}
-
-@media (max-width: 600px) {
-  .faction-ranks {
-    gap: 0.3rem;
-  }
-
-  .rank-chip {
-    padding: 0.2rem 0.5rem;
-
-    .rank-name {
-      display: none;
-    }
-  }
+.boon-description {
+  font-size: 0.82rem;
+  color: #a5a5a5;
+  line-height: 1.4;
+  white-space: pre-wrap;
 }

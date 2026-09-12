@@ -4,6 +4,7 @@ import type { Character } from "../Components/characters/database/db";
 import { getEnteMetadata } from "./enteMetadataService.ts";
 import { characterManager, isEnteId } from "../Components/characters/CharacterManager";
 import { triggerAutoSync } from "./SyncScheduler";
+import { getKnownFactionIds } from "./FactionService";
 
 /* =========================
    UTIL
@@ -255,7 +256,8 @@ export async function pushLocalChanges() {
       const localEntes = await db.entes.where("characterId").equals(charId).toArray();
 
       if (localEntes.length > 0) {
-        // Never push non-ente rows to Supabase's entes table.
+        // Never push non-ente rows (faction tokens, medals, malformed IDs)
+        // to Supabase's entes table.
         const deletedEntes = localEntes.filter(e => e.isDeleted && isEnteId(e.enteID));
         const activeEntes = localEntes.filter(e => !e.isDeleted && isEnteId(e.enteID));
 
@@ -398,11 +400,15 @@ export async function pushLocalChanges() {
       console.error("pushLocalChanges: unexpected error syncing", char.charName, err);
     }
 
+    // Only clear the dirty flag if no new edits landed while we were pushing.
+    // Otherwise we'd silently drop changes that arrived mid-push: the deferred
+    // `performSync` pass sees a "clean" char and skips it entirely.
     const freshChar = await db.characters.get(charId);
     if (!freshChar) continue;
     if (freshChar.updatedAt === updatedAtAtStart) {
       await db.characters.update(charId, { isDirty: false });
     } else {
+      // New edits landed during the push — leave dirty and schedule another pass.
       triggerAutoSync();
     }
   }
@@ -451,6 +457,11 @@ export async function pullCharactersExport() {
     "KudagiBento", "AstralDoguBento", "GetStrongBento", "ScarletSpectralMiso",
     "ShellSushi", "SpicyFireRamen", "MomijiManju", "MochisDeBaku", "TaiyakiKijyo",
   ];
+
+  // Faction IDs come from the FactionService sheet (falling back to the
+  // built-in list if the sheet is unreachable). New factions added to the
+  // sheet are picked up automatically on the next sync.
+  const FACTION_IDS = await getKnownFactionIds();
 
   const affectedCharacterIds = new Set<number>();
 
@@ -520,6 +531,9 @@ export async function pullCharactersExport() {
     const normalize = (s: string) =>
       String(s || "").toLowerCase().replace(/[\s:_\-]+/g, "");
 
+    // Track which faction IDs we saw in this export so we can zero the rest.
+    const seenFactions = new Set<string>();
+
     for (const [rawId, amount] of Object.entries(parsedInventory)) {
       const normalized = normalize(rawId);
 
@@ -529,9 +543,15 @@ export async function pullCharactersExport() {
       const consumableMatch = CONSUMABLE_IDS.find((c) => normalize(c) === normalized);
       if (consumableMatch) { inventory!.consumables[consumableMatch] = amount; continue; }
 
-      // Skip everything that isn't an ente ID (faction tokens "Hexen"/"Yuugen"/
-      // "Carnival", medals like "Ghoul_Medal", malformed strings, etc.). Those
-      // are either shown elsewhere (Factions panel) or are Discord-only items.
+      // Faction tokens → inventory.consumables under their canonical name.
+      const factionMatch = FACTION_IDS.find((f) => normalize(f) === normalized);
+      if (factionMatch) {
+        inventory!.consumables[factionMatch] = amount;
+        seenFactions.add(factionMatch);
+        continue;
+      }
+
+      // Skip everything else that isn't an ente ID (medals, malformed strings, etc.)
       if (!isEnteId(rawId)) continue;
 
       const existing = existingMap.get(rawId);
@@ -556,6 +576,14 @@ export async function pullCharactersExport() {
           updatedAt: 0,
           isDirty: false,
         });
+      }
+    }
+
+    // Any faction the character has no more tokens for should drop to 0 so
+    // the Factions panel doesn't keep showing a rank they no longer hold.
+    for (const fid of FACTION_IDS) {
+      if (!seenFactions.has(fid) && (inventory!.consumables[fid] ?? 0) !== 0) {
+        inventory!.consumables[fid] = 0;
       }
     }
 
@@ -663,6 +691,7 @@ async function pullRemoteEntes() {
 
       const remoteTime = new Date(remote.updated_at).getTime();
 
+      // Don't clobber a local ente that has unsynced edits.
       if (existing?.isDirty) continue;
 
       if (!existing) {
@@ -732,6 +761,7 @@ async function pullRemoteLoadouts() {
 
       const remoteTime = new Date(remote.updated_at).getTime();
 
+      // Never overwrite a local loadout that still has unsynced edits.
       if (existing?.isDirty) continue;
 
       const loadoutData = {
@@ -803,6 +833,7 @@ async function pullRemoteInventories() {
     const localInv = await db.inventory.where("characterId").equals(localChar.id!).first();
     const remoteTime = new Date(remoteInv.updated_at).getTime();
 
+    // Don't clobber local inventory that has unsynced changes.
     if (localInv?.isDirty) continue;
 
     if (!localInv) {
@@ -879,6 +910,7 @@ async function pullRemoteCharacters() {
       await db.characters.update(local.id!, { remoteId: remote.id, updatedAt: Date.now(), isDirty: true });
     }
 
+    // Skip if local has newer unsynced changes for this character.
     if (remoteTime > local.updatedAt && !local.isDirty) {
       await db.characters.update(local.id!, {
         charName: remote.char_name,

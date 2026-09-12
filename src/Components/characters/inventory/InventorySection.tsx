@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import "../characterSheetStyles/InventorySection.scss";
 import { db } from "../database/db";
-import { characterManager } from "../CharacterManager";
-import { fetchCharacterBoons, type CharacterBoon } from "../../../services/FactionService";
+import {
+  getUnlockedBoons,
+  preloadFactions,
+  type UnlockedBoon,
+} from "../../../services/FactionService";
 
 // Food images
 import FOOD1 from "@/assets/FOOD/FOOD1.png";
@@ -43,7 +46,6 @@ interface InventoryState {
   customItems: CustomItem[];
 }
 
-/* Shared image for all custom cards – replace the import above with your actual image */
 const CUSTOM_CARD_IMG = customItem;
 
 const CARDS: ItemMap = {
@@ -58,35 +60,19 @@ const CARDS: ItemMap = {
   Persuadir: { name: "Acción Diplomática (Persuadir)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
   Rogar: { name: "Acción Diplomática (Rogar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
   Seducir: { name: "Acción Diplomática (Seducir)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
-  Sobornar: { name: "Acción Diplomática (Sobornar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" }
+  Sobornar: { name: "Acción Diplomática (Sobornar)", img: "https://cdn.discordapp.com/emojis/1279228077691637760.webp?size=128" },
 };
 
 const CONSUMABLES: ItemMap = {
   KudagiBento: { name: "Kudagi Bento", desc: "Recupera un 25% de HP", img: FOOD1 },
-  AstralDoguBento: { name: "Astral Dogu Bento", desc: "Recupera HP al azar", img: FOOD2 },
+  AstralDoguBento: { name: "Astral Dogu Bento", desc: "Recupera al azar entre un 25% HP, 33% HP o 50% de HP", img: FOOD2 },
   GetStrongBento: { name: "Get Strong Bento", desc: "Recupera un 50% de HP", img: FOOD3 },
-  ScarletSpectralMiso: { name: "Scarlet Spectral Miso", desc: "Recupera cartas", img: FOOD4 },
-  ShellSushi: { name: "Shell Sushi", desc: "Recupera cartas", img: FOOD5 },
-  SpicyFireRamen: { name: "Spicy Fire Ramen", desc: "Recupera cartas", img: FOOD6 },
+  ScarletSpectralMiso: { name: "Scarlet Spectral Miso", desc: "Recupera un 25% de las cartas del deck (cartas al azar)", img: FOOD4 },
+  ShellSushi: { name: "Shell Sushi", desc: "Recupera el 25% o el 50% de las cartas del deck al azar (cartas al azar)", img: FOOD5 },
+  SpicyFireRamen: { name: "Spicy Fire Ramen", desc: "Recupera el 50% de las cartas del deck al azar (cartas al azar)", img: FOOD6 },
   MomijiManju: { name: "Momiji Manju", desc: "+2 al dado", img: FOOD206 },
   MochisDeBaku: { name: "Mochis de Baku", desc: "+4 al dado", img: FOOD207 },
   TaiyakiKijyo: { name: "Taiyaki de Kijyo", desc: "+6 al dado", img: FOOD208 },
-};
-
-/* =========================
-   FACTION CONSTANTS
-   (mirror faction_progression.py)
-========================= */
-
-const FACTION_RANK_ORDER = ["A", "B", "C", "D", "E"] as const;
-type FactionRank = (typeof FACTION_RANK_ORDER)[number];
-
-const FACTION_RANK_NAMES: Record<FactionRank, string> = {
-  A: "Notario",
-  B: "Estenógrafo",
-  C: "Jurado",
-  D: "Fiscal",
-  E: "Magistrado",
 };
 
 function makeId() {
@@ -94,97 +80,85 @@ function makeId() {
 }
 
 /* =========================
-   FACTIONS SECTION (read-only)
+   BOON TEXT RENDERER
+   Renders **bold** markers as real bold spans.
 ========================= */
 
-function FactionsSection({ characterId }: { characterId: number | null }) {
-  const [boons, setBoons] = useState<CharacterBoon[]>([]);
-  const [loaded, setLoaded] = useState(false);
+function renderBoonText(text: string) {
+  if (!text) return null;
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^\*\*(.+)\*\*$/);
+    if (match) return <b key={i}>{match[1]}</b>;
+    return <span key={i}>{part}</span>;
+  });
+}
+
+/* =========================
+   FACTIONS SECTION
+   Only shows unlocked boons, colored per faction.
+========================= */
+
+const FALLBACK_BOON_COLOR = "#6200ea";
+
+function FactionsSection({
+  consumables,
+}: {
+  consumables: Record<string, number>;
+}) {
+  const [boons, setBoons] = useState<UnlockedBoon[] | null>(null);
 
   useEffect(() => {
-    if (!characterId) {
-      setBoons([]);
-      setLoaded(true);
-      return;
-    }
-
     let cancelled = false;
-    setLoaded(false);
+    setBoons(null);
 
     (async () => {
-      try {
-        const character = await characterManager.getCharacter(characterId);
-        if (cancelled || !character) return;
-        const result = await fetchCharacterBoons(character.charName);
-        if (!cancelled) setBoons(result);
-      } catch (err) {
-        console.warn("Failed to load character boons:", err);
-      } finally {
-        if (!cancelled) setLoaded(true);
-      }
+      await preloadFactions();
+      const result = await getUnlockedBoons(consumables);
+      if (!cancelled) setBoons(result);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [characterId]);
+    // Re-run when the consumable map changes (add/remove of any key/value).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(consumables)]);
 
-  // The whole section hides until we've confirmed the character has boons.
-  if (!loaded || boons.length === 0) return null;
-
-  // Group boons by faction.
-  const byFaction: Record<string, CharacterBoon[]> = {};
-  for (const b of boons) {
-    if (!byFaction[b.faction_id]) byFaction[b.faction_id] = [];
-    byFaction[b.faction_id].push(b);
-  }
-
-  const factionIds = Object.keys(byFaction).sort();
+  if (!boons || boons.length === 0) return null;
 
   return (
     <div className="inv-section factions-section">
-      <h3 className="mb-2">Factions</h3>
+      <h3 className="mb-2">Boons</h3>
 
-      <div className="faction-list">
-        {factionIds.map((fid) => {
-          const unlockedKeys = new Set(
-            byFaction[fid].map((b) => b.boon_key.toUpperCase())
-          );
-
-          // Current rank = highest unlocked boon.
-          let currentRank: FactionRank | null = null;
-          for (let i = FACTION_RANK_ORDER.length - 1; i >= 0; i--) {
-            if (unlockedKeys.has(FACTION_RANK_ORDER[i])) {
-              currentRank = FACTION_RANK_ORDER[i];
-              break;
-            }
-          }
-
+      <div className="boon-list">
+        {boons.map((b) => {
+          const accent = b.color || FALLBACK_BOON_COLOR;
           return (
-            <div key={fid} className="faction-card">
-              <div className="faction-header">
-                <span className="faction-name">{fid}</span>
-                <span className="faction-current">
-                  Current:{" "}
-                  <b>{currentRank ? FACTION_RANK_NAMES[currentRank] : "—"}</b>
+            <div
+              key={`${b.factionId}-${b.rankKey}`}
+              className="boon-card"
+              style={{ borderLeftColor: accent }}
+            >
+              <div className="boon-header">
+                <span
+                  className="boon-faction"
+                  style={{ color: accent }}
+                >
+                  {b.factionId}
                 </span>
+                <span className="boon-rank">{b.rankName}</span>
               </div>
 
-              <div className="faction-ranks">
-                {FACTION_RANK_ORDER.map((key) => {
-                  const unlocked = unlockedKeys.has(key);
-                  return (
-                    <div
-                      key={key}
-                      className={`rank-chip ${unlocked ? "unlocked" : "locked"}`}
-                      title={FACTION_RANK_NAMES[key]}
-                    >
-                      <span className="rank-letter">{key}</span>
-                      <span className="rank-name">{FACTION_RANK_NAMES[key]}</span>
-                    </div>
-                  );
-                })}
+              <div className="boon-title">
+                {b.title || `${b.factionId} ${b.rankKey}`}
               </div>
+
+              {b.description && (
+                <div className="boon-description">
+                  {renderBoonText(b.description)}
+                </div>
+              )}
             </div>
           );
         })}
@@ -334,8 +308,7 @@ export default function InventorySection({ characterId }: Props) {
     <div className="inventory-section container-fluid">
       <h2 className="mb-3">Inventory</h2>
 
-      {/* Factions panel — hidden unless the character has unlocked a boon */}
-      <FactionsSection characterId={characterId} />
+      <FactionsSection consumables={inventory.consumables} />
 
       <InventoryGrid
         title="Cards"
@@ -353,7 +326,6 @@ export default function InventorySection({ characterId }: Props) {
         onChange={updateCount}
       />
 
-      {/* Custom Section – Horizontal rows */}
       <div className="inv-section">
         <h3 className="mb-2">Custom</h3>
 
