@@ -40,10 +40,6 @@ const emptyLoadoutData = {
   selectedActivaIds: [],
 };
 
-/* =========================
-   SLOT TYPES
-========================= */
-
 interface NormalizedSlotCard {
   cardId: string;
   quantity: number;
@@ -58,16 +54,9 @@ interface NormalizedSlots {
   cards: NormalizedSlotCard[];
 }
 
-/** Legacy rows stored `slots.max` instead of `slots.base`. Normalize on read. */
 function normalizeSlots(raw: any): NormalizedSlots {
   if (!raw) {
-    return {
-      base: 0,
-      tempBonus: 0,
-      characterTempBonus: 0,
-      sources: [],
-      cards: [],
-    };
+    return { base: 0, tempBonus: 0, characterTempBonus: 0, sources: [], cards: [] };
   }
   return {
     base:
@@ -92,12 +81,6 @@ function normalizeSlots(raw: any): NormalizedSlots {
   };
 }
 
-/**
- * FIX: merge live sources with the saved snapshot. The saved array is only
- * used for the user's `enabled` override; bonus/name/image always come from
- * the live source. Saved sources that no longer exist live (ghosts) are
- * dropped, and new live sources default to enabled.
- */
 function mergeLiveWithSaved<T extends { enteId: string; enabled?: boolean }>(
   live: T[],
   saved: T[] | undefined
@@ -173,7 +156,6 @@ function LoadoutCard({
   const customActivas = data.habilidadesActivas ?? [];
   const activeAEIds = data.activeAEIds ?? [];
 
-  // Live-merged source lists (saved snapshot used only for `enabled` overrides)
   const liveHpSources = mergeLiveWithSaved(hpSources, hp.sources);
   const liveAtkSources = mergeLiveWithSaved(atkSources, atk.sources);
   const liveSlotSources = mergeLiveWithSaved(slotSources, slots.sources);
@@ -398,6 +380,16 @@ function LoadoutCard({
     setLocalBarrierAmounts((prev) => ({ ...prev, [id]: value }));
   };
 
+  // Commit on Enter as well as onBlur — mobile browsers don't reliably fire
+  // blur when the user taps away from a text input, which is how name / hp
+  // edits were silently getting dropped.
+  const commitOnEnter = (handler: () => void) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      (e.target as HTMLInputElement).blur();
+      handler();
+    }
+  };
+
   return (
     <div className="loadout-card card shadow-sm border-0">
       <div className="card-body">
@@ -409,6 +401,7 @@ function LoadoutCard({
                 value={localName}
                 onChange={(e) => setLocalName(e.target.value)}
                 onBlur={commitName}
+                onKeyDown={commitOnEnter(commitName)}
               />
             ) : (
               <h3 className="h5 mb-1">{loadout.name}</h3>
@@ -459,6 +452,7 @@ function LoadoutCard({
               value={localHpCurrent}
               onChange={(e) => setLocalHpCurrent(e.target.value)}
               onBlur={commitHpCurrent}
+              onKeyDown={commitOnEnter(commitHpCurrent)}
             />
             <span className="text-muted">/ {totalHP}</span>
 
@@ -480,6 +474,7 @@ function LoadoutCard({
                   value={localBarrierAmounts[barrier.id] ?? ""}
                   onChange={(e) => handleBarrierLocalChange(barrier.id, e.target.value)}
                   onBlur={() => commitBarrier(barrier.id)}
+                  onKeyDown={commitOnEnter(() => commitBarrier(barrier.id))}
                 />
                 {configOpen && (
                   <button

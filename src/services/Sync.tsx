@@ -3,6 +3,7 @@ import { db } from "../Components/characters/database/db";
 import type { Character } from "../Components/characters/database/db";
 import { getEnteMetadata } from "./enteMetadataService.ts";
 import { characterManager } from "../Components/characters/CharacterManager";
+import { triggerAutoSync } from "./SyncScheduler";
 
 /* =========================
    UTIL
@@ -201,6 +202,9 @@ export async function pushLocalChanges() {
   const dirtyCharacters = await db.characters.filter((c) => c.isDirty).toArray();
 
   for (const char of dirtyCharacters) {
+    const charId = char.id!;
+    const updatedAtAtStart = char.updatedAt;
+
     try {
       const charPayload: any = {
         user_id: remoteUserId,
@@ -243,12 +247,12 @@ export async function pushLocalChanges() {
       const remoteCharId = char.remoteId ?? charUpsert.data.id;
 
       if (!char.remoteId && remoteCharId) {
-        await db.characters.update(char.id!, { remoteId: remoteCharId });
+        await db.characters.update(charId, { remoteId: remoteCharId });
       }
 
       if (!remoteCharId) continue;
 
-      const localEntes = await db.entes.where("characterId").equals(char.id!).toArray();
+      const localEntes = await db.entes.where("characterId").equals(charId).toArray();
 
       if (localEntes.length > 0) {
         const deletedEntes = localEntes.filter(e => e.isDeleted);
@@ -294,7 +298,7 @@ export async function pushLocalChanges() {
         }
       }
 
-      const inv = await db.inventory.where("characterId").equals(char.id!).first();
+      const inv = await db.inventory.where("characterId").equals(charId).first();
 
       if (inv) {
         const invPayload: any = {
@@ -319,7 +323,7 @@ export async function pushLocalChanges() {
         }
       }
 
-      const localLoadouts = await db.loadouts.where("characterId").equals(char.id!).toArray();
+      const localLoadouts = await db.loadouts.where("characterId").equals(charId).toArray();
 
       const deleted = localLoadouts.filter((l) => l.isDeleted);
       for (const l of deleted) {
@@ -389,10 +393,20 @@ export async function pushLocalChanges() {
           }
         }
       }
-
-      await db.characters.update(char.id!, { isDirty: false });
     } catch (err) {
       console.error("pushLocalChanges: unexpected error syncing", char.charName, err);
+    }
+
+    // Only clear the dirty flag if no new edits landed while we were pushing.
+    // Otherwise we'd silently drop changes that arrived mid-push: the deferred
+    // `performSync` pass sees a "clean" char and skips it entirely.
+    const freshChar = await db.characters.get(charId);
+    if (!freshChar) continue;
+    if (freshChar.updatedAt === updatedAtAtStart) {
+      await db.characters.update(charId, { isDirty: false });
+    } else {
+      // New edits landed during the push — leave dirty and schedule another pass.
+      triggerAutoSync();
     }
   }
 }
@@ -441,7 +455,6 @@ export async function pullCharactersExport() {
     "ShellSushi", "SpicyFireRamen", "MomijiManju", "MochisDeBaku", "TaiyakiKijyo",
   ];
 
-  // Track characters we touched, so we can recalculate their bonuses at the end
   const affectedCharacterIds = new Set<number>();
 
   for (const exp of exports) {
@@ -551,9 +564,6 @@ export async function pullCharactersExport() {
       isDirty: true,
     });
 
-    // 🔧 FIX: Zero out entes that are no longer in the Discord export.
-    // These stay in the local sheet with amount 0 (and get soft-synced to
-    // remote as amount 0) but no longer contribute bonuses.
     for (const ente of localEntes) {
       if (!parsedInventory[ente.enteID] && ente.amount !== 0) {
         await db.entes.update(ente.id!, {
@@ -578,8 +588,6 @@ export async function pullCharactersExport() {
     affectedCharacterIds.add(localChar!.id!);
   }
 
-  // 🔧 FIX: After touching entes for these characters, recalculate their
-  // bonus log and tell the UI something changed.
   for (const id of affectedCharacterIds) {
     await characterManager.recalculateCharacterBonuses(id);
     await characterManager.emitEntesUpdated(id);
@@ -651,6 +659,10 @@ async function pullRemoteEntes() {
         .first();
 
       const remoteTime = new Date(remote.updated_at).getTime();
+
+      // Don't clobber a local ente that has unsynced edits.
+      if (existing?.isDirty) continue;
+
       if (!existing) {
         await db.entes.add({
           characterId: localChar.id!,
@@ -680,9 +692,6 @@ async function pullRemoteEntes() {
       }
     }
 
-    // 🔧 FIX: Only recalc + emit when something actually changed.
-    // Recalculate from `amount` (not stored unlock_level) so any drift
-    // between the two gets corrected on the next sync.
     if (changed) {
       await characterManager.recalculateCharacterBonuses(localChar.id!);
       await characterManager.emitEntesUpdated(localChar.id!);
@@ -720,6 +729,13 @@ async function pullRemoteLoadouts() {
       const existing = await db.loadouts.where("remoteId").equals(remote.id).first();
 
       const remoteTime = new Date(remote.updated_at).getTime();
+
+      // FIX: never overwrite a local loadout that still has unsynced edits.
+      // The old code blindly replaced local data with remote data, so any
+      // change that hadn't been pushed yet (mobile blip, slow network, mid-
+      // sync edit) was silently erased on the next app load.
+      if (existing?.isDirty) continue;
+
       const loadoutData = {
         hp: remote.hp ?? createDefaultLoadoutData().hp,
         atk: remote.atk ?? createDefaultLoadoutData().atk,
@@ -788,6 +804,9 @@ async function pullRemoteInventories() {
 
     const localInv = await db.inventory.where("characterId").equals(localChar.id!).first();
     const remoteTime = new Date(remoteInv.updated_at).getTime();
+
+    // FIX: don't clobber local inventory that has unsynced changes.
+    if (localInv?.isDirty) continue;
 
     if (!localInv) {
       await db.inventory.add({
@@ -863,7 +882,8 @@ async function pullRemoteCharacters() {
       await db.characters.update(local.id!, { remoteId: remote.id, updatedAt: Date.now(), isDirty: true });
     }
 
-    if (remoteTime > local.updatedAt) {
+    // Skip if local has newer unsynced changes for this character.
+    if (remoteTime > local.updatedAt && !local.isDirty) {
       await db.characters.update(local.id!, {
         charName: remote.char_name,
         baseStats: remote.base_stats,

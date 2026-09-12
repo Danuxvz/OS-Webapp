@@ -51,12 +51,22 @@ export const loadoutManager = {
   },
 
   async update(loadout: Loadout): Promise<void> {
-    const existing = await db.loadouts.get(Number(loadout.id));
-    if (!existing) return;
+    const numericId = Number(loadout.id);
+    if (!loadout.id || Number.isNaN(numericId)) {
+      console.warn("loadoutManager.update: invalid loadout id", loadout.id);
+      return;
+    }
+
+    const existing = await db.loadouts.get(numericId);
+    if (!existing) {
+      console.warn("loadoutManager.update: loadout row not found", numericId);
+      return;
+    }
 
     const toSave: DBLoadout = {
       ...existing,
       ...uiToDB(loadout),
+      id: numericId,
       remoteId: loadout.remoteId ?? existing.remoteId,
     };
 
