@@ -567,23 +567,23 @@ function LoadoutCard({
         <div className="mb-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <span className="h5 mt-3 fw-bold">Armor Class:</span>
-              <div>
-                <span>{acDisplay}</span>
-                {configOpen && (
-                  <button
-                    className="btn btn-link btn-sm p-0"
-                    onClick={() => setPopupSection("ac")}
-                  >
-                    ⚙
-                  </button>
-                )}
-                {armorClass.text && (
-                  <div className="small text-muted mt-1">
-                    {acEffectText || acTitleLine}
-                  </div>
-                )}
+            {configOpen && (
+              <button
+                className="btn btn-link btn-sm p-0"
+                onClick={() => setPopupSection("ac")}
+              >
+                ⚙
+              </button>
+            )}
+          </div>
+          <div className="mt-2">
+            <span>{acDisplay}</span>
+            {armorClass.text && (
+              <div className="small text-muted mt-1">
+                {acEffectText || acTitleLine}
               </div>
-            </div>
+            )}
+          </div>
         </div>
 
         {/* Slots display – hidden in NPC mode */}
