@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import "../characterSheetStyles/InventorySection.scss";
 import { db } from "../database/db";
+import { characterManager } from "../CharacterManager";
+import { fetchCharacterBoons, type CharacterBoon } from "../../../services/FactionService";
 
 // Food images
 import FOOD1 from "@/assets/FOOD/FOOD1.png";
@@ -71,9 +73,129 @@ const CONSUMABLES: ItemMap = {
   TaiyakiKijyo: { name: "Taiyaki de Kijyo", desc: "+6 al dado", img: FOOD208 },
 };
 
+/* =========================
+   FACTION CONSTANTS
+   (mirror faction_progression.py)
+========================= */
+
+const FACTION_RANK_ORDER = ["A", "B", "C", "D", "E"] as const;
+type FactionRank = (typeof FACTION_RANK_ORDER)[number];
+
+const FACTION_RANK_NAMES: Record<FactionRank, string> = {
+  A: "Notario",
+  B: "Estenógrafo",
+  C: "Jurado",
+  D: "Fiscal",
+  E: "Magistrado",
+};
+
 function makeId() {
   return `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/* =========================
+   FACTIONS SECTION (read-only)
+========================= */
+
+function FactionsSection({ characterId }: { characterId: number | null }) {
+  const [boons, setBoons] = useState<CharacterBoon[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!characterId) {
+      setBoons([]);
+      setLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+    setLoaded(false);
+
+    (async () => {
+      try {
+        const character = await characterManager.getCharacter(characterId);
+        if (cancelled || !character) return;
+        const result = await fetchCharacterBoons(character.charName);
+        if (!cancelled) setBoons(result);
+      } catch (err) {
+        console.warn("Failed to load character boons:", err);
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [characterId]);
+
+  // The whole section hides until we've confirmed the character has boons.
+  if (!loaded || boons.length === 0) return null;
+
+  // Group boons by faction.
+  const byFaction: Record<string, CharacterBoon[]> = {};
+  for (const b of boons) {
+    if (!byFaction[b.faction_id]) byFaction[b.faction_id] = [];
+    byFaction[b.faction_id].push(b);
+  }
+
+  const factionIds = Object.keys(byFaction).sort();
+
+  return (
+    <div className="inv-section factions-section">
+      <h3 className="mb-2">Factions</h3>
+
+      <div className="faction-list">
+        {factionIds.map((fid) => {
+          const unlockedKeys = new Set(
+            byFaction[fid].map((b) => b.boon_key.toUpperCase())
+          );
+
+          // Current rank = highest unlocked boon.
+          let currentRank: FactionRank | null = null;
+          for (let i = FACTION_RANK_ORDER.length - 1; i >= 0; i--) {
+            if (unlockedKeys.has(FACTION_RANK_ORDER[i])) {
+              currentRank = FACTION_RANK_ORDER[i];
+              break;
+            }
+          }
+
+          return (
+            <div key={fid} className="faction-card">
+              <div className="faction-header">
+                <span className="faction-name">{fid}</span>
+                <span className="faction-current">
+                  Current:{" "}
+                  <b>{currentRank ? FACTION_RANK_NAMES[currentRank] : "—"}</b>
+                </span>
+              </div>
+
+              <div className="faction-ranks">
+                {FACTION_RANK_ORDER.map((key) => {
+                  const unlocked = unlockedKeys.has(key);
+                  return (
+                    <div
+                      key={key}
+                      className={`rank-chip ${unlocked ? "unlocked" : "locked"}`}
+                      title={FACTION_RANK_NAMES[key]}
+                    >
+                      <span className="rank-letter">{key}</span>
+                      <span className="rank-name">{FACTION_RANK_NAMES[key]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   INVENTORY SECTION
+========================= */
 
 export default function InventorySection({ characterId }: Props) {
   const [inventory, setInventory] = useState<InventoryState>({
@@ -86,7 +208,6 @@ export default function InventorySection({ characterId }: Props) {
   const [customTitle, setCustomTitle] = useState("");
   const [customDesc, setCustomDesc] = useState("");
 
-  // Track editing state per custom item
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDesc, setEditDesc] = useState("");
@@ -185,14 +306,12 @@ export default function InventorySection({ characterId }: Props) {
     await persistInventory(next);
   };
 
-  // Start editing a custom item
   const startEditing = (item: CustomItem) => {
     setEditingId(item.id);
     setEditTitle(item.title);
     setEditDesc(item.desc);
   };
 
-  // Save edited title/description
   const saveEdit = async () => {
     if (!editingId) return;
 
@@ -200,14 +319,13 @@ export default function InventorySection({ characterId }: Props) {
     const item = next.customItems.find((it) => it.id === editingId);
     if (!item) return;
 
-    item.title = editTitle.trim() || item.title;  // keep old if blank
+    item.title = editTitle.trim() || item.title;
     item.desc = editDesc.trim();
 
     await persistInventory(next);
     setEditingId(null);
   };
 
-  // Cancel editing
   const cancelEdit = () => {
     setEditingId(null);
   };
@@ -215,6 +333,9 @@ export default function InventorySection({ characterId }: Props) {
   return (
     <div className="inventory-section container-fluid">
       <h2 className="mb-3">Inventory</h2>
+
+      {/* Factions panel — hidden unless the character has unlocked a boon */}
+      <FactionsSection characterId={characterId} />
 
       <InventoryGrid
         title="Cards"
@@ -239,7 +360,6 @@ export default function InventorySection({ characterId }: Props) {
         <div className="custom-list">
           {inventory.customItems.map((item) => (
             <div key={item.id} className="custom-card">
-              {/* Count badge */}
               <div
                 className="custom-count"
                 onClick={(e) => {
@@ -255,10 +375,8 @@ export default function InventorySection({ characterId }: Props) {
                 x{item.count}
               </div>
 
-              {/* Image */}
               <img src={CUSTOM_CARD_IMG} alt="" className="custom-icon" />
 
-              {/* Title & Description (editable) */}
               <div className="custom-text">
                 {editingId === item.id ? (
                   <div className="custom-edit-form">
@@ -295,7 +413,6 @@ export default function InventorySection({ characterId }: Props) {
           ))}
         </div>
 
-        {/* Create custom card button */}
         <div
           className="custom-add-btn"
           onClick={() => setIsCreatingCustom(true)}

@@ -22,6 +22,16 @@ export function computeUnlockLevel(amount: number) {
 }
 
 /**
+ * A real ente ID looks like E001, E005A, D020, C009T, E123J. Faction tokens
+ * ("Hexen"), medals ("Ghoul_Medal"), and malformed entries ("E005:AE") all
+ * fail this check, so we can silently skip them wherever the ente pipeline
+ * would otherwise treat them as entes.
+ */
+export function isEnteId(id: string): boolean {
+  return /^[A-Z]\d{3}[A-Z]*$/i.test(id ?? "");
+}
+
+/**
  * E-series variant groups. All variants of a given base share the *highest*
  * unlock level in their group (E005 Tsuchigumo, E052 Mandrágoras, E060
  * Kobolds). This MUST match the grouping used in EntesSection (UI).
@@ -41,10 +51,6 @@ export function getSpecialEVariantGroup(enteID: string): string | null {
  * Shared NPC classifier. A character is a "main" only if it came from a
  * Discord export AND is not assigned to a custom tab. Everything else
  * (custom tabs, NPC tab, shared imports) is treated as an NPC.
- *
- * This MUST stay in sync with `isNpcMode` in App.tsx — otherwise the bonus
- * engine and the character sheet will disagree about whether slots should
- * be merged into HP.
  */
 export function isNpcCharacter(
   char: Pick<Character, "externalId" | "tabId">
@@ -432,6 +438,7 @@ class CharacterManager {
     // exactly the way EntesSection (UI) does.
     const groupMaxAmount = new Map<string, number>();
     for (const ente of entes) {
+      if (!isEnteId(ente.enteID)) continue;
       const group = getSpecialEVariantGroup(ente.enteID);
       if (!group) continue;
       const amt = ente.amount ?? 0;
@@ -443,9 +450,11 @@ class CharacterManager {
     const engine = new StatBonusEngine(character.baseStats);
     engine.tempBonus = character.tempStatBonus;
 
-    const missingMetadata = new Set<string>();
-
     for (const ente of entes) {
+      // Skip non-ente rows (faction tokens, medals, malformed IDs) — they
+      // have no SB to apply and would only spam the console with warnings.
+      if (!isEnteId(ente.enteID)) continue;
+
       const group = getSpecialEVariantGroup(ente.enteID);
       const effectiveAmount = group
         ? groupMaxAmount.get(group) ?? 0
@@ -456,12 +465,9 @@ class CharacterManager {
 
       const metadata = await getEnteMetadata(ente.enteID);
       if (!metadata) {
-        if (!missingMetadata.has(ente.enteID)) {
-          missingMetadata.add(ente.enteID);
-          console.warn(
-            `[recalculateCharacterBonuses] Missing metadata for ente ${ente.enteID} (character ${characterId}); skipped.`
-          );
-        }
+        console.warn(
+          `[recalculateCharacterBonuses] Missing metadata for ente ${ente.enteID} (character ${characterId}); skipped.`
+        );
         continue;
       }
 
@@ -622,6 +628,7 @@ class CharacterManager {
     });
 
     for (const ente of remote.entes) {
+      if (!isEnteId(ente.enteID)) continue;
       await db.entes.add({
         characterId,
         enteID: ente.enteID,

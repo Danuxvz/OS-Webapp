@@ -2,7 +2,7 @@ import { supabase, getRemoteUserId, getDiscordId, getLoggedInDiscordUser } from 
 import { db } from "../Components/characters/database/db";
 import type { Character } from "../Components/characters/database/db";
 import { getEnteMetadata } from "./enteMetadataService.ts";
-import { characterManager } from "../Components/characters/CharacterManager";
+import { characterManager, isEnteId } from "../Components/characters/CharacterManager";
 import { triggerAutoSync } from "./SyncScheduler";
 
 /* =========================
@@ -255,8 +255,9 @@ export async function pushLocalChanges() {
       const localEntes = await db.entes.where("characterId").equals(charId).toArray();
 
       if (localEntes.length > 0) {
-        const deletedEntes = localEntes.filter(e => e.isDeleted);
-        const activeEntes = localEntes.filter(e => !e.isDeleted);
+        // Never push non-ente rows to Supabase's entes table.
+        const deletedEntes = localEntes.filter(e => e.isDeleted && isEnteId(e.enteID));
+        const activeEntes = localEntes.filter(e => !e.isDeleted && isEnteId(e.enteID));
 
         for (const ente of deletedEntes) {
           const { error } = await supabase
@@ -397,15 +398,11 @@ export async function pushLocalChanges() {
       console.error("pushLocalChanges: unexpected error syncing", char.charName, err);
     }
 
-    // Only clear the dirty flag if no new edits landed while we were pushing.
-    // Otherwise we'd silently drop changes that arrived mid-push: the deferred
-    // `performSync` pass sees a "clean" char and skips it entirely.
     const freshChar = await db.characters.get(charId);
     if (!freshChar) continue;
     if (freshChar.updatedAt === updatedAtAtStart) {
       await db.characters.update(charId, { isDirty: false });
     } else {
-      // New edits landed during the push — leave dirty and schedule another pass.
       triggerAutoSync();
     }
   }
@@ -532,6 +529,11 @@ export async function pullCharactersExport() {
       const consumableMatch = CONSUMABLE_IDS.find((c) => normalize(c) === normalized);
       if (consumableMatch) { inventory!.consumables[consumableMatch] = amount; continue; }
 
+      // Skip everything that isn't an ente ID (faction tokens "Hexen"/"Yuugen"/
+      // "Carnival", medals like "Ghoul_Medal", malformed strings, etc.). Those
+      // are either shown elsewhere (Factions panel) or are Discord-only items.
+      if (!isEnteId(rawId)) continue;
+
       const existing = existingMap.get(rawId);
       if (existing) {
         if (existing.amount !== amount) {
@@ -565,6 +567,7 @@ export async function pullCharactersExport() {
     });
 
     for (const ente of localEntes) {
+      if (!isEnteId(ente.enteID)) continue;
       if (!parsedInventory[ente.enteID] && ente.amount !== 0) {
         await db.entes.update(ente.id!, {
           amount: 0,
@@ -626,8 +629,8 @@ async function pullRemoteEntes() {
 
     let changed = false;
 
-    const activeRemote = remoteEntes.filter(r => !r.is_deleted);
-    const deletedRemote = remoteEntes.filter(r => r.is_deleted);
+    const activeRemote = remoteEntes.filter(r => !r.is_deleted && isEnteId(r.ente_id));
+    const deletedRemote = remoteEntes.filter(r => r.is_deleted && isEnteId(r.ente_id));
 
     for (const rd of deletedRemote) {
       const local = await db.entes
@@ -645,7 +648,7 @@ async function pullRemoteEntes() {
       .where("characterId")
       .equals(localChar.id!)
       .toArray();
-    for (const le of localAll.filter(e => !e.isDeleted)) {
+    for (const le of localAll.filter(e => !e.isDeleted && isEnteId(e.enteID))) {
       if (!activeIds.has(le.enteID) && !le.isDirty) {
         await db.entes.delete(le.id!);
         changed = true;
@@ -660,7 +663,6 @@ async function pullRemoteEntes() {
 
       const remoteTime = new Date(remote.updated_at).getTime();
 
-      // Don't clobber a local ente that has unsynced edits.
       if (existing?.isDirty) continue;
 
       if (!existing) {
@@ -730,10 +732,6 @@ async function pullRemoteLoadouts() {
 
       const remoteTime = new Date(remote.updated_at).getTime();
 
-      // FIX: never overwrite a local loadout that still has unsynced edits.
-      // The old code blindly replaced local data with remote data, so any
-      // change that hadn't been pushed yet (mobile blip, slow network, mid-
-      // sync edit) was silently erased on the next app load.
       if (existing?.isDirty) continue;
 
       const loadoutData = {
@@ -805,7 +803,6 @@ async function pullRemoteInventories() {
     const localInv = await db.inventory.where("characterId").equals(localChar.id!).first();
     const remoteTime = new Date(remoteInv.updated_at).getTime();
 
-    // FIX: don't clobber local inventory that has unsynced changes.
     if (localInv?.isDirty) continue;
 
     if (!localInv) {
@@ -882,7 +879,6 @@ async function pullRemoteCharacters() {
       await db.characters.update(local.id!, { remoteId: remote.id, updatedAt: Date.now(), isDirty: true });
     }
 
-    // Skip if local has newer unsynced changes for this character.
     if (remoteTime > local.updatedAt && !local.isDirty) {
       await db.characters.update(local.id!, {
         charName: remote.char_name,
