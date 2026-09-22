@@ -2,7 +2,11 @@ import { supabase, getRemoteUserId, getDiscordId, getLoggedInDiscordUser } from 
 import { db } from "../Components/characters/database/db";
 import type { Character } from "../Components/characters/database/db";
 import { getEnteMetadata } from "./enteMetadataService.ts";
-import { characterManager, isEnteId } from "../Components/characters/CharacterManager";
+import {
+  characterManager,
+  isEnteId,
+  computeUnlockLevel,
+} from "../Components/characters/CharacterManager";
 import { triggerAutoSync } from "./SyncScheduler";
 import { getKnownFactionIds } from "./FactionService";
 
@@ -401,14 +405,11 @@ export async function pushLocalChanges() {
     }
 
     // Only clear the dirty flag if no new edits landed while we were pushing.
-    // Otherwise we'd silently drop changes that arrived mid-push: the deferred
-    // `performSync` pass sees a "clean" char and skips it entirely.
     const freshChar = await db.characters.get(charId);
     if (!freshChar) continue;
     if (freshChar.updatedAt === updatedAtAtStart) {
       await db.characters.update(charId, { isDirty: false });
     } else {
-      // New edits landed during the push — leave dirty and schedule another pass.
       triggerAutoSync();
     }
   }
@@ -459,8 +460,7 @@ export async function pullCharactersExport() {
   ];
 
   // Faction IDs come from the FactionService sheet (falling back to the
-  // built-in list if the sheet is unreachable). New factions added to the
-  // sheet are picked up automatically on the next sync.
+  // built-in list if the sheet is unreachable).
   const FACTION_IDS = await getKnownFactionIds();
 
   const affectedCharacterIds = new Set<number>();
@@ -555,10 +555,20 @@ export async function pullCharactersExport() {
       if (!isEnteId(rawId)) continue;
 
       const existing = existingMap.get(rawId);
+      const correctUnlock = computeUnlockLevel(amount);
+
       if (existing) {
-        if (existing.amount !== amount) {
+        // Update amount AND unlockLevel. Previously only `amount` was written,
+        // which left externally-imported entes stuck at unlockLevel 0 and made
+        // them invisible to the Loadout HE/AC/AE eligibility checks (which read
+        // `unlockLevel` straight off the DB row).
+        if (
+          existing.amount !== amount ||
+          existing.unlockLevel !== correctUnlock
+        ) {
           await db.entes.update(existing.id!, {
             amount,
+            unlockLevel: correctUnlock,
             updatedAt: Date.now(),
             isDirty: true,
           });
@@ -568,19 +578,18 @@ export async function pullCharactersExport() {
           characterId: localChar!.id!,
           enteID: rawId,
           amount,
-          unlockLevel: 0,
+          unlockLevel: correctUnlock,
           favorite: false,
           order: Date.now(),
           notes: "",
           customImage: "",
-          updatedAt: 0,
-          isDirty: false,
+          updatedAt: Date.now(),
+          isDirty: true,
         });
       }
     }
 
-    // Any faction the character has no more tokens for should drop to 0 so
-    // the Factions panel doesn't keep showing a rank they no longer hold.
+    // Any faction the character has no more tokens for should drop to 0.
     for (const fid of FACTION_IDS) {
       if (!seenFactions.has(fid) && (inventory!.consumables[fid] ?? 0) !== 0) {
         inventory!.consumables[fid] = 0;
@@ -694,12 +703,17 @@ async function pullRemoteEntes() {
       // Don't clobber a local ente that has unsynced edits.
       if (existing?.isDirty) continue;
 
+      // Recompute unlockLevel from amount rather than trusting whatever the
+      // remote row says — the remote can be stale, and we always want the DB
+      // row to reflect the current computeUnlockLevel rule.
+      const correctUnlock = computeUnlockLevel(remote.amount);
+
       if (!existing) {
         await db.entes.add({
           characterId: localChar.id!,
           enteID: remote.ente_id,
           amount: remote.amount,
-          unlockLevel: remote.unlock_level,
+          unlockLevel: correctUnlock,
           favorite: remote.favorite,
           order: typeof remote.order === "number" ? remote.order : Date.now(),
           notes: remote.notes ?? "",
@@ -712,7 +726,7 @@ async function pullRemoteEntes() {
       } else if (remoteTime > existing.updatedAt) {
         await db.entes.update(existing.id!, {
           amount: remote.amount,
-          unlockLevel: remote.unlock_level,
+          unlockLevel: correctUnlock,
           favorite: remote.favorite,
           notes: remote.notes ?? "",
           customImage: remote.custom_image ?? "",

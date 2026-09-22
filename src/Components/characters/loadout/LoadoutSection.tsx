@@ -9,7 +9,11 @@ import type {
   ArmorType,
 } from "../../../types";
 import LoadoutCard from "./LoadoutCard";
-import { characterManager } from "../CharacterManager";
+import {
+  characterManager,
+  computeUnlockLevel,
+  getSpecialEVariantGroup,
+} from "../CharacterManager";
 import { loadoutManager } from "./LoadoutManager";
 import { getEnteMetadata } from "../../../services/enteMetadataService";
 import "../characterSheetStyles/LoadoutSection.scss";
@@ -61,6 +65,42 @@ function parseAcMeta(raw: string | undefined): { type: ArmorType; name: string; 
 // Helper: only accept IDs that look like ente IDs (e.g., E001, D020, C009T)
 function isEnteId(id: string): boolean {
   return /^[A-Z]\d{3}[A-Z]*$/i.test(id);
+}
+
+/**
+ * Build a map of enteID → effective unlock level, matching the rule used
+ * everywhere else in the app:
+ *   - E-series variant groups (E005/E052/E060) share the group's highest
+ *     copy count → the highest unlock level.
+ *   - Every other ente uses its own individual unlock level.
+ *
+ * The DB rows only carry the *individual* unlockLevel. Without this, a
+ * loadout building its HE / AE / AC source lists off raw DB rows would miss
+ * variants whose sibling is the one that actually reached the threshold.
+ */
+function computeEffectiveUnlockMap(
+  entes: { enteID: string; amount: number }[]
+): Map<string, number> {
+  const groupMaxAmount = new Map<string, number>();
+
+  for (const e of entes) {
+    const group = getSpecialEVariantGroup(e.enteID);
+    if (!group) continue;
+    const amt = e.amount ?? 0;
+    if (amt > (groupMaxAmount.get(group) ?? 0)) {
+      groupMaxAmount.set(group, amt);
+    }
+  }
+
+  const result = new Map<string, number>();
+  for (const e of entes) {
+    const group = getSpecialEVariantGroup(e.enteID);
+    const effectiveAmount = group
+      ? groupMaxAmount.get(group) ?? 0
+      : e.amount ?? 0;
+    result.set(e.enteID, computeUnlockLevel(effectiveAmount));
+  }
+  return result;
 }
 
 function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps) {
@@ -161,8 +201,14 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
     ]);
     if (!character) return [];
 
+    // Use the group-aware effective unlock level so E-series variants inherit
+    // their sibling's threshold (matches CharacterManager + EntesSection).
+    const effectiveUnlock = computeEffectiveUnlockMap(entes);
+
     const eligible = entes.filter(
-      (e) => (e.unlockLevel ?? 0) >= 3 && isEnteId(e.enteID)
+      (e) =>
+        (effectiveUnlock.get(e.enteID) ?? 0) >= 3 &&
+        isEnteId(e.enteID)
     );
 
     return Promise.all(
@@ -185,8 +231,12 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
     ]);
     if (!character) return [];
 
+    const effectiveUnlock = computeEffectiveUnlockMap(entes);
+
     const eligible = entes.filter(
-      (e) => (e.unlockLevel ?? 0) >= 1 && isEnteId(e.enteID)
+      (e) =>
+        (effectiveUnlock.get(e.enteID) ?? 0) >= 1 &&
+        isEnteId(e.enteID)
     );
 
     return Promise.all(
@@ -209,8 +259,12 @@ function LoadoutSection({ characterId, isNpcMode = false }: LoadoutSectionProps)
     ]);
     if (!character) return [];
 
+    const effectiveUnlock = computeEffectiveUnlockMap(entes);
+
     const eligible = entes.filter(
-      (e) => (e.unlockLevel ?? 0) >= 4 && isEnteId(e.enteID)
+      (e) =>
+        (effectiveUnlock.get(e.enteID) ?? 0) >= 4 &&
+        isEnteId(e.enteID)
     );
 
     return Promise.all(
