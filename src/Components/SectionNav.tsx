@@ -16,7 +16,7 @@ function SectionNav({
   isNpcMode = false,
 }: SectionNavProps) {
   return (
-    <div className="nav d-flex align-items-center">
+    <div className={`nav d-flex align-items-center ${isNpcMode ? "nav-npc" : ""}`}>
       {sidebarHidden && (
         <button className="nav-burger" onClick={onShowSidebar}>☰</button>
       )}

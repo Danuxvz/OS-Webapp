@@ -1,7 +1,7 @@
 import { db } from "../database/db";
 import type { Loadout } from "../../../types";
 import type { DBLoadout } from "../database/db";
-import { triggerAutoSync } from "../../../services/SyncScheduler.ts";
+import { syncCharacterLoadouts } from "../../../services/Sync";
 
 function dbToUI(row: DBLoadout): Loadout {
   return {
@@ -45,7 +45,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync(true);
+    void syncCharacterLoadouts(loadout.characterId);
 
     return { ...loadout, id: String(id) };
   },
@@ -77,7 +77,8 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync(true);
+    // Fire-and-forget direct push for this character's loadouts.
+    void syncCharacterLoadouts(loadout.characterId);
   },
 
   async delete(loadoutId: string): Promise<void> {
@@ -91,7 +92,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync(true);
+    void syncCharacterLoadouts(loadout.characterId);
   },
 
   async markLoadoutDeleted(loadoutId: string): Promise<void> {
@@ -110,6 +111,6 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    triggerAutoSync(true);
+    void syncCharacterLoadouts(loadout.characterId);
   },
 };

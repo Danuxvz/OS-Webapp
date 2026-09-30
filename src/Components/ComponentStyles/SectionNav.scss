@@ -3,22 +3,6 @@
   display: flex;
   gap: 8px;
   align-items: center;
-}
-
-.nav-burger {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 22px;
-  cursor: pointer;
-  padding: 4px 8px;
-  flex: 0;
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   max-height: 5%;
 }
 
@@ -28,16 +12,8 @@
   color: white;
   font-size: 22px;
   cursor: pointer;
-  flex: 0;
-}
-
-.tab-btn:hover {
-  background-color: #444;
-}
-
-.tab-btn.active {
-  background-color: #6200ea;
-  color: #fff;
+  padding: 4px 8px;
+  flex: 0 0 auto;
 }
 
 .tab-btn {
@@ -50,6 +26,15 @@
   cursor: pointer;
   transition: background-color 0.2s;
   flex: 1;
+}
+
+.tab-btn:hover {
+  background-color: #444;
+}
+
+.tab-btn.active {
+  background-color: #6200ea;
+  color: #fff;
 }
 
 .nav button:hover {
@@ -70,21 +55,28 @@
 }
 
 @media (max-width: 768px) {
-    .nav {
-        flex-wrap: nowrap;
-        gap: 4px;
-    }
+  .nav {
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
 
-    .nav-burger {
-        flex: 0 0 auto;
-        max-width: 20%;
-    }
+  .nav-burger {
+    flex: 0 0 auto;
+    max-width: 20%;
+  }
 
-    .tab-btn {
-        flex: 1 1 auto;
-        min-width: 0;
-        font-size: 13px;
-        padding: 8px 6px;
-        max-width: 24%;
-    }
+  .tab-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    padding: 8px 6px;
+    max-width: 24%;
+  }
+
+  .nav.nav-npc .tab-btn {
+    flex: 1 1 0;
+    max-width: none;
+    font-size: 14px;
+    padding: 8px 10px;
+  }
 }

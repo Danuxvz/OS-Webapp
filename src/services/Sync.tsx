@@ -197,6 +197,148 @@ export async function pushTabs() {
 }
 
 /* =========================
+   MAP LOADOUT → REMOTE PAYLOAD
+========================= */
+
+function mapLoadoutToRemotePayload(l: any, remoteCharId: string) {
+  const data = l.data ?? createDefaultLoadoutData();
+  const payload: any = {
+    character_id: remoteCharId,
+    name: l.name,
+    hp: data.hp ?? createDefaultLoadoutData().hp,
+    atk: data.atk ?? createDefaultLoadoutData().atk,
+    weapon: data.weapon ?? createDefaultLoadoutData().weapon,
+    habilidades_pasivas: data.habilidadesPasivas?.selectedIds ?? [],
+    armor_class: data.armorClass ?? createDefaultLoadoutData().armorClass,
+    slots: data.slots ?? createDefaultLoadoutData().slots,
+    notes: data.notes ?? "",
+    custom_he: data.customHE ?? [],
+    custom_acs: data.customACs ?? [],
+    custom_weapons: data.customWeapons ?? [],
+    habilidades_activas: data.habilidadesActivas ?? [],
+    active_ae_ids: data.activeAEIds ?? [],
+    selected_activa_ids: data.selectedActivaIds ?? [],
+    updated_at: new Date(l.updatedAt).toISOString(),
+  };
+  if (l.remoteId) payload.id = l.remoteId;
+  return payload;
+}
+
+/* =========================
+   DIRECT PER-CHARACTER LOADOUT SYNC
+   ---------------------------------------------------------------
+   Called from LoadoutManager on every loadout mutation. Pushes just
+   that character's loadouts straight to Supabase, bypassing the full
+   sync queue entirely. This guarantees the change reaches the server
+   immediately even if a full sync is mid-flight for the same char
+   (the old bug: the in-flight sync read a stale loadout list, cleared
+   the dirty flag, and the queued follow-up skipped the char).
+========================= */
+
+const loadoutSyncInFlight = new Set<number>();
+const loadoutSyncPending = new Set<number>();
+
+async function runLoadoutSync(characterId: number): Promise<void> {
+  const localChar = await db.characters.get(characterId);
+  if (!localChar) return;
+
+  // Character hasn't been pushed yet — a full sync will create it and
+  // carry its loadouts along. Trigger one and bail out.
+  if (!localChar.remoteId) {
+    triggerAutoSync(true);
+    return;
+  }
+
+  const remoteCharId = localChar.remoteId;
+
+  // 1) Process deletes first so they don't collide with upserts.
+  const localLoadouts = await db.loadouts
+    .where("characterId")
+    .equals(characterId)
+    .toArray();
+
+  const deleted = localLoadouts.filter((l) => l.isDeleted);
+  for (const l of deleted) {
+    if (l.remoteId) {
+      const { error } = await supabase.from("loadouts").delete().eq("id", l.remoteId);
+      if (!error) {
+        await db.loadouts.delete(l.id!);
+      } else {
+        console.warn("runLoadoutSync: failed to delete loadout", l.name, error);
+      }
+    } else {
+      await db.loadouts.delete(l.id!);
+    }
+  }
+
+  // 2) Re-read remaining loadouts (deletes above may have changed the list).
+  const remaining = (await db.loadouts
+    .where("characterId")
+    .equals(characterId)
+    .toArray()).filter((l) => !l.isDeleted);
+
+  const existingLoadouts = remaining.filter((l) => l.remoteId);
+  const newLoadouts = remaining.filter((l) => !l.remoteId);
+
+  if (existingLoadouts.length > 0) {
+    const records = existingLoadouts.map((l) => mapLoadoutToRemotePayload(l, remoteCharId));
+    const { error } = await supabase.from("loadouts").upsert(records, { onConflict: "id" });
+    if (error) {
+      console.warn("runLoadoutSync: existing upsert error", error);
+    } else {
+      for (const l of existingLoadouts) {
+        await db.loadouts.update(l.id!, { isDirty: false });
+      }
+    }
+  }
+
+  if (newLoadouts.length > 0) {
+    const records = newLoadouts.map((l) => mapLoadoutToRemotePayload(l, remoteCharId));
+    const { data: upserted, error } = await supabase
+      .from("loadouts")
+      .upsert(records, { onConflict: "character_id,name" })
+      .select();
+
+    if (error) {
+      console.warn("runLoadoutSync: new upsert error", error);
+    } else if (upserted) {
+      for (const remote of upserted) {
+        const local = newLoadouts.find(
+          (l) => l.name === remote.name && l.characterId === characterId
+        );
+        if (local) {
+          await db.loadouts.update(local.id!, { remoteId: remote.id, isDirty: false });
+        }
+      }
+    }
+  }
+}
+
+export async function syncCharacterLoadouts(characterId: number): Promise<void> {
+  if (loadoutSyncInFlight.has(characterId)) {
+    // Another sync is already running for this character; queue one more pass.
+    loadoutSyncPending.add(characterId);
+    return;
+  }
+
+  loadoutSyncInFlight.add(characterId);
+
+  try {
+    do {
+      loadoutSyncPending.delete(characterId);
+      try {
+        await runLoadoutSync(characterId);
+      } catch (err) {
+        console.warn("syncCharacterLoadouts error:", err);
+      }
+    } while (loadoutSyncPending.has(characterId));
+  } finally {
+    loadoutSyncInFlight.delete(characterId);
+    loadoutSyncPending.delete(characterId);
+  }
+}
+
+/* =========================
    PUSH LOCAL → SUPABASE
 ========================= */
 
@@ -348,39 +490,15 @@ export async function pushLocalChanges() {
         const existingLoadouts = active.filter((l) => l.remoteId);
         const newLoadouts = active.filter((l) => !l.remoteId);
 
-        const mapLoadoutToPayload = (l: any) => {
-          const data = l.data ?? createDefaultLoadoutData();
-          const payload: any = {
-            character_id: remoteCharId,
-            name: l.name,
-            hp: data.hp ?? createDefaultLoadoutData().hp,
-            atk: data.atk ?? createDefaultLoadoutData().atk,
-            weapon: data.weapon ?? createDefaultLoadoutData().weapon,
-            habilidades_pasivas: data.habilidadesPasivas?.selectedIds ?? [],
-            armor_class: data.armorClass ?? createDefaultLoadoutData().armorClass,
-            slots: data.slots ?? createDefaultLoadoutData().slots,
-            notes: data.notes ?? "",
-            custom_he: data.customHE ?? [],
-            custom_acs: data.customACs ?? [],
-            custom_weapons: data.customWeapons ?? [],
-            habilidades_activas: data.habilidadesActivas ?? [],
-            active_ae_ids: data.activeAEIds ?? [],
-            selected_activa_ids: data.selectedActivaIds ?? [],
-            updated_at: new Date(l.updatedAt).toISOString(),
-          };
-          if (l.remoteId) payload.id = l.remoteId;
-          return payload;
-        };
-
         if (existingLoadouts.length > 0) {
-          const existingRecords = existingLoadouts.map(mapLoadoutToPayload);
+          const existingRecords = existingLoadouts.map((l) => mapLoadoutToRemotePayload(l, remoteCharId));
           const { error } = await supabase.from("loadouts").upsert(existingRecords, { onConflict: "id" });
           if (error) console.warn("pushLocalChanges: loadouts upsert error", error);
           else for (const l of existingLoadouts) await db.loadouts.update(l.id!, { isDirty: false });
         }
 
         if (newLoadouts.length > 0) {
-          const newRecords = newLoadouts.map(mapLoadoutToPayload);
+          const newRecords = newLoadouts.map((l) => mapLoadoutToRemotePayload(l, remoteCharId));
           const { data: upserted, error } = await supabase
             .from("loadouts")
             .upsert(newRecords, { onConflict: "character_id,name" })
