@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { characterManager } from "./CharacterManager";
 import EntesSection from "./entes/EntesSection";
+import Loading from "../Loading";
 
 interface Props {
   discordId: string;
@@ -11,7 +12,7 @@ function CharacterBootstrap({ discordId }: Props) {
 
   useEffect(() => {
     async function init() {
-      let chars = await characterManager.getCharactersByUser(discordId);
+      const chars = await characterManager.getCharactersByUser(discordId);
 
       if (chars.length === 0) {
         const newId = await characterManager.createCharacter(discordId, "Default Character");
@@ -24,7 +25,7 @@ function CharacterBootstrap({ discordId }: Props) {
     init();
   }, [discordId]);
 
-  if (!activeCharacterId) return <div>Loading...</div>;
+  if (!activeCharacterId) return <Loading />;
 
   return (
     <EntesSection characterId={activeCharacterId} />

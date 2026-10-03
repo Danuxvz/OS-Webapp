@@ -1,5 +1,4 @@
 import { pushLocalChanges, pushTabs, flushPendingSyncs } from "./Sync";
-import { supabase } from "./SupaBase";
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let isSyncing = false;
@@ -69,15 +68,6 @@ if (typeof window !== "undefined") {
 
 /* =========================
    VISIBILITY HANDLER
-   ---------------------------------------------------------------
-   When the tab comes back to the foreground:
-     1. Refresh the auth session.
-     2. Flush every dirty character (force-clears stuck flags).
-
-   Debounced: some browsers fire `visibilitychange → visible`
-   multiple times in quick succession (we saw 3 events in a row in
-   the logs), and each one would kick off a full sync pass. A short
-   guard prevents the pile-up.
 ========================= */
 
 let visibilityRecoveryInFlight = false;
@@ -97,30 +87,10 @@ if (typeof document !== "undefined") {
 
     console.log("[sync] tab became visible — recovering sync");
 
-    void (async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        if (data.session) {
-          await supabase.auth.refreshSession().catch((err) => {
-            console.warn(
-              "[sync] visibility refresh failed (non-fatal):",
-              err?.message ?? err
-            );
-          });
-        }
-      } catch (err: any) {
-        console.warn(
-          "[sync] visibility refresh threw (non-fatal):",
-          err?.message ?? err
-        );
-      }
-
-      // Give the browser a tick to finish waking up, then flush.
-      setTimeout(() => {
-        void flushPendingSyncs().finally(() => {
-          visibilityRecoveryInFlight = false;
-        });
-      }, 250);
-    })();
+    setTimeout(() => {
+      void flushPendingSyncs().finally(() => {
+        visibilityRecoveryInFlight = false;
+      });
+    }, 250);
   });
 }

@@ -2,16 +2,22 @@ import { createClient, type Session, type User } from "@supabase/supabase-js";
 import { db } from "../Components/characters/database/db";
 
 /* =========================
-   PASS-THROUGH AUTH LOCK
-   ---------------------------------------------------------------
+   IN-MEMORY AUTH LOCK
 ========================= */
 
-function passthroughLock<R>(
+let authLockChain: Promise<unknown> = Promise.resolve();
+
+function inMemoryLock<R>(
   _name: string,
   _acquireTimeout: number,
   fn: () => Promise<R>
 ): Promise<R> {
-  return fn();
+  const next = authLockChain.then(fn, fn);
+  authLockChain = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
 }
 
 /* =========================
@@ -83,7 +89,7 @@ export const supabase = createClient(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true,
-      lock: passthroughLock,
+      lock: inMemoryLock,
     },
     global: {
       fetch: instrumentedFetch,
