@@ -32,6 +32,22 @@ function parseInventoryBlob(blob: string) {
   return result;
 }
 
+/**
+ * Reject a promise if it hasn't settled within `ms`. This is the key
+ * defence against background-tab freezes: if a fetch is orphaned while
+ * the tab is suspended, we don't wait forever — we give up and let the
+ * retry loop try again on the next tick.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 /* =========================
    DEFAULT LOADOUT DATA
 ========================= */
@@ -57,16 +73,15 @@ function createDefaultLoadoutData() {
 /* =========================
    GLOBAL WRITE MUTEX
    ---------------------------------------------------------------
-   Serializes every Supabase write issued by this tab. Combined with
-   the serialized auth lock in SupaBase.ts, this guarantees no two
-   writes ever overlap, which is what triggers the Navigator
-   LockManager failures.
+   Serializes every Supabase write issued by this tab.
 ========================= */
 
 let writeLockChain: Promise<unknown> = Promise.resolve();
 
 function withWriteLock<R>(fn: () => Promise<R>): Promise<R> {
   const next = writeLockChain.then(fn, fn);
+  // Swallow rejection on the chain pointer so a failed write can't poison
+  // subsequent waiters. Callers get `next` directly.
   writeLockChain = next.catch(() => undefined);
   return next;
 }
@@ -356,32 +371,59 @@ async function pushCharacterDirectInner(characterId: number): Promise<void> {
   }
 }
 
+const PUSH_TIMEOUT_MS = 15000;
+
 async function pushCharacterDirect(characterId: number): Promise<void> {
-  return withWriteLock(() => pushCharacterDirectInner(characterId));
+  // Wrap the whole push in a write lock AND a hard timeout. If a fetch
+  // gets orphaned while the tab is suspended, the timeout fires, the
+  // lock releases, and the caller's retry loop keeps moving.
+  return withWriteLock(() =>
+    withTimeout(
+      pushCharacterDirectInner(characterId),
+      PUSH_TIMEOUT_MS,
+      `pushCharacterDirect(${characterId})`
+    )
+  );
 }
 
 /* =========================
    PER-CHARACTER SYNC QUEUE
    ---------------------------------------------------------------
-   Bounded retries (max 3 attempts) so a permanently failing
-   character can't wedge the loop. If a new edit lands during a pass
-   (pending flag set), we schedule one more pass via setTimeout
-   instead of looping in place.
+   Bounded retries + a watchdog that force-clears in-flight flags
+   that have been stuck for too long. This is the second line of
+   defence against tab-freeze orphaned promises: even if a fetch
+   never resolves and never times out (rare, but possible if the
+   browser never fires the timer), the watchdog clears the flag on
+   the next attempt so we can retry.
 ========================= */
 
 const characterSyncInFlight = new Set<number>();
 const characterSyncPending = new Set<number>();
+const characterSyncStartedAt = new Map<number, number>();
 
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY = 1000;
+const STUCK_INFLIGHT_MS = 60000;
 
 export async function syncCharacter(characterId: number): Promise<void> {
+  // Watchdog: if we've been "in flight" for over a minute, assume the
+  // promise is orphaned and force-clear so we can try again.
+  const startedAt = characterSyncStartedAt.get(characterId);
+  if (startedAt && Date.now() - startedAt > STUCK_INFLIGHT_MS) {
+    console.warn(
+      `[sync] character ${characterId} was in-flight for >${STUCK_INFLIGHT_MS}ms — clearing stuck flag`
+    );
+    characterSyncInFlight.delete(characterId);
+    characterSyncStartedAt.delete(characterId);
+  }
+
   if (characterSyncInFlight.has(characterId)) {
     characterSyncPending.add(characterId);
     return;
   }
 
   characterSyncInFlight.add(characterId);
+  characterSyncStartedAt.set(characterId, Date.now());
 
   try {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -410,10 +452,10 @@ export async function syncCharacter(characterId: number): Promise<void> {
     }
   } finally {
     characterSyncInFlight.delete(characterId);
+    characterSyncStartedAt.delete(characterId);
   }
 
   if (characterSyncPending.delete(characterId)) {
-    // A new edit landed during the pass — run one more time.
     setTimeout(() => { void syncCharacter(characterId); }, 0);
   }
 }
@@ -436,6 +478,24 @@ export async function pushLocalChanges() {
 
   console.log(`[sync] pushing ${dirtyCharacters.length} dirty character(s)`);
   await Promise.all(dirtyCharacters.map(c => syncCharacter(c.id!)));
+}
+
+/**
+ * Called when the tab comes back to the foreground. Force-clears any
+ * in-flight flags that look stuck and kicks a fresh pass over every
+ * dirty character. This is what recovers from a tab-suspend that
+ * orphaned a fetch.
+ */
+export async function flushPendingSyncs(): Promise<void> {
+  const now = Date.now();
+  for (const [id, startedAt] of characterSyncStartedAt) {
+    if (now - startedAt > 3000) {
+      console.log(`[sync] flushPendingSyncs: clearing stuck flag for character ${id}`);
+      characterSyncInFlight.delete(id);
+      characterSyncStartedAt.delete(id);
+    }
+  }
+  await pushLocalChanges();
 }
 
 /* =========================
