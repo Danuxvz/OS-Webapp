@@ -55,6 +55,33 @@ function createDefaultLoadoutData() {
 }
 
 /* =========================
+   WAIT FOR REMOTE USER
+   ---------------------------------------------------------------
+   initSupabaseAuth() is awaited in main.tsx before the app renders,
+   but if the users-table insert fails (RLS, transient network, etc.)
+   remoteUserId stays null and every push silently bails. This helper
+   polls for up to 30s so a slow/eventual auth still succeeds instead
+   of dropping the edit on the floor.
+========================= */
+
+async function waitForRemoteUserId(timeoutMs = 30000): Promise<string> {
+  const existing = getRemoteUserId();
+  if (existing) return existing;
+
+  console.warn("[sync] remoteUserId not set yet — waiting up to", timeoutMs, "ms");
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 250));
+    const id = getRemoteUserId();
+    if (id) {
+      console.log("[sync] remoteUserId became available after", Date.now() - start, "ms");
+      return id;
+    }
+  }
+  throw new Error(`Timed out waiting for remoteUserId after ${timeoutMs}ms`);
+}
+
+/* =========================
    MAP LOADOUT → REMOTE PAYLOAD
 ========================= */
 
@@ -83,163 +110,86 @@ function mapLoadoutToRemotePayload(l: any, remoteCharId: string) {
 }
 
 /* =========================
-   DIRECT PER-CHARACTER PUSH
-   ---------------------------------------------------------------
-   Pushes one character's complete state (character row, entes,
-   inventory, loadouts) to Supabase in one shot.
-
-   Throws on ANY failure so the retry wrapper in syncCharacter()
-   can try again. This is the crucial change over the old code: the
-   previous version swallowed individual errors and then cleared the
-   character's isDirty flag anyway, which meant a single failed
-   upsert could leave data stranded forever.
+   PER-SECTION PUSH HELPERS
 ========================= */
 
-async function pushCharacterDirect(characterId: number): Promise<void> {
-  const remoteUserId = getRemoteUserId();
-  if (!remoteUserId) {
-    throw new Error("User not registered on server yet");
-  }
-
-  const char = await db.characters.get(characterId);
-  if (!char) return;
-
-  const updatedAtAtStart = char.updatedAt;
-
-  // ---------- 1) Character row ----------
-  const charPayload: any = {
-    user_id: remoteUserId,
-    char_name: char.charName,
-    base_stats: char.baseStats,
-    bonus_log: char.bonusLog,
-    temp_stat_bonus: char.tempStatBonus,
-    charImage: char.charImage,
-    history_sum: char.historySum,
-    schema_version: char.schemaVersion,
-    updated_at: new Date(char.updatedAt).toISOString(),
-    source: char.source ?? "web",
-    is_published: !!char.isPublished,
-    is_shared_import: !!char.isImportedShared,
-  };
-
-  if (char.tabId) {
-    const localTab = await db.tabs.get(char.tabId);
-    charPayload.tab_id = localTab?.remoteId ?? null;
-  } else {
-    charPayload.tab_id = null;
-  }
-
-  if (char.externalId) charPayload.external_id = char.externalId;
-  if (char.remoteId) charPayload.id = char.remoteId;
-
-  const conflictField = char.externalId ? "external_id" : "id";
-
-  const charUpsert = await supabase
-    .from("characters")
-    .upsert(charPayload, { onConflict: conflictField })
-    .select()
-    .single();
-
-  if (charUpsert.error) {
-    throw new Error(`Character upsert failed: ${charUpsert.error.message}`);
-  }
-
-  const remoteCharId = char.remoteId ?? charUpsert.data?.id;
-  if (!remoteCharId) {
-    throw new Error("Server did not return a character id");
-  }
-
-  if (!char.remoteId) {
-    await db.characters.update(characterId, { remoteId: remoteCharId });
-  }
-
-  // ---------- 2) Entes ----------
+async function pushEntesForCharacter(characterId: number, remoteCharId: string): Promise<void> {
   const localEntes = await db.entes.where("characterId").equals(characterId).toArray();
+  if (localEntes.length === 0) return;
 
-  if (localEntes.length > 0) {
-    // Never push non-ente rows (faction tokens, medals, malformed IDs).
-    const deletedEntes = localEntes.filter(e => e.isDeleted && isEnteId(e.enteID));
-    const activeEntes = localEntes.filter(e => !e.isDeleted && isEnteId(e.enteID));
+  const deletedEntes = localEntes.filter(e => e.isDeleted && isEnteId(e.enteID));
+  const activeEntes = localEntes.filter(e => !e.isDeleted && isEnteId(e.enteID));
 
-    for (const ente of deletedEntes) {
-      const { error } = await supabase
-        .from("entes")
-        .update({ is_deleted: true, updated_at: new Date().toISOString() })
-        .eq("character_id", remoteCharId)
-        .eq("ente_id", ente.enteID);
+  for (const ente of deletedEntes) {
+    const { error } = await supabase
+      .from("entes")
+      .update({ is_deleted: true, updated_at: new Date().toISOString() })
+      .eq("character_id", remoteCharId)
+      .eq("ente_id", ente.enteID);
 
-      if (error) {
-        throw new Error(`Ente delete-mark failed (${ente.enteID}): ${error.message}`);
-      }
-      await db.entes.update(ente.id!, { isDirty: false, updatedAt: Date.now() });
-    }
-
-    if (activeEntes.length > 0) {
-      const uniqueMap = new Map<string, any>();
-      for (const ente of activeEntes) {
-        const key = `${remoteCharId}_${ente.enteID}`;
-        uniqueMap.set(key, {
-          character_id: remoteCharId,
-          ente_id: ente.enteID,
-          amount: ente.amount,
-          favorite: ente.favorite,
-          order: ente.order,
-          unlock_level: ente.unlockLevel,
-          notes: ente.notes ?? null,
-          custom_image: ente.customImage ?? null,
-          is_deleted: false,
-          updated_at: new Date(ente.updatedAt).toISOString(),
-        });
-      }
-
-      const entesUpsert = await supabase
-        .from("entes")
-        .upsert(Array.from(uniqueMap.values()), { onConflict: "character_id,ente_id" });
-
-      if (entesUpsert.error) {
-        throw new Error(`Entes upsert failed: ${entesUpsert.error.message}`);
-      }
-    }
+    if (error) throw new Error(`Ente delete-mark failed (${ente.enteID}): ${error.message}`);
+    await db.entes.update(ente.id!, { isDirty: false, updatedAt: Date.now() });
   }
 
-  // ---------- 3) Inventory ----------
-  const inv = await db.inventory.where("characterId").equals(characterId).first();
+  if (activeEntes.length === 0) return;
 
-  if (inv) {
-    const invPayload: any = {
+  const uniqueMap = new Map<string, any>();
+  for (const ente of activeEntes) {
+    const key = `${remoteCharId}_${ente.enteID}`;
+    uniqueMap.set(key, {
       character_id: remoteCharId,
-      cards: inv.cards,
-      consumables: inv.consumables,
-      customItems: inv.customItems ?? [],
-      updated_at: new Date(inv.updatedAt).toISOString(),
-    };
-    if (inv.remoteId) invPayload.id = inv.remoteId;
-
-    const invUpsert = await supabase
-      .from("inventory")
-      .upsert(invPayload, { onConflict: "character_id" })
-      .select()
-      .maybeSingle();
-
-    if (invUpsert.error) {
-      throw new Error(`Inventory upsert failed: ${invUpsert.error.message}`);
-    }
-
-    if (invUpsert.data && !inv.remoteId) {
-      await db.inventory.update(inv.id!, { remoteId: invUpsert.data.id });
-    }
+      ente_id: ente.enteID,
+      amount: ente.amount,
+      favorite: ente.favorite,
+      order: ente.order,
+      unlock_level: ente.unlockLevel,
+      notes: ente.notes ?? null,
+      custom_image: ente.customImage ?? null,
+      is_deleted: false,
+      updated_at: new Date(ente.updatedAt).toISOString(),
+    });
   }
 
-  // ---------- 4) Loadouts ----------
+  const { error } = await supabase
+    .from("entes")
+    .upsert(Array.from(uniqueMap.values()), { onConflict: "character_id,ente_id" });
+
+  if (error) throw new Error(`Entes upsert failed: ${error.message}`);
+}
+
+async function pushInventoryForCharacter(characterId: number, remoteCharId: string): Promise<void> {
+  const inv = await db.inventory.where("characterId").equals(characterId).first();
+  if (!inv) return;
+
+  const invPayload: any = {
+    character_id: remoteCharId,
+    cards: inv.cards,
+    consumables: inv.consumables,
+    customItems: inv.customItems ?? [],
+    updated_at: new Date(inv.updatedAt).toISOString(),
+  };
+  if (inv.remoteId) invPayload.id = inv.remoteId;
+
+  const { data, error } = await supabase
+    .from("inventory")
+    .upsert(invPayload, { onConflict: "character_id" })
+    .select()
+    .maybeSingle();
+
+  if (error) throw new Error(`Inventory upsert failed: ${error.message}`);
+  if (data && !inv.remoteId) {
+    await db.inventory.update(inv.id!, { remoteId: data.id });
+  }
+}
+
+async function pushLoadoutsForCharacter(characterId: number, remoteCharId: string): Promise<void> {
   const localLoadouts = await db.loadouts.where("characterId").equals(characterId).toArray();
 
   const deletedLoadouts = localLoadouts.filter(l => l.isDeleted);
   for (const l of deletedLoadouts) {
     if (l.remoteId) {
       const { error } = await supabase.from("loadouts").delete().eq("id", l.remoteId);
-      if (error) {
-        throw new Error(`Loadout delete failed (${l.name}): ${error.message}`);
-      }
+      if (error) throw new Error(`Loadout delete failed (${l.name}): ${error.message}`);
     }
     await db.loadouts.delete(l.id!);
   }
@@ -251,10 +201,7 @@ async function pushCharacterDirect(characterId: number): Promise<void> {
   if (existingLoadouts.length > 0) {
     const records = existingLoadouts.map(l => mapLoadoutToRemotePayload(l, remoteCharId));
     const { error } = await supabase.from("loadouts").upsert(records, { onConflict: "id" });
-
-    if (error) {
-      throw new Error(`Existing loadouts upsert failed: ${error.message}`);
-    }
+    if (error) throw new Error(`Existing loadouts upsert failed: ${error.message}`);
     for (const l of existingLoadouts) {
       await db.loadouts.update(l.id!, { isDirty: false });
     }
@@ -266,11 +213,7 @@ async function pushCharacterDirect(characterId: number): Promise<void> {
       .from("loadouts")
       .upsert(records, { onConflict: "character_id,name" })
       .select();
-
-    if (error) {
-      throw new Error(`New loadouts upsert failed: ${error.message}`);
-    }
-
+    if (error) throw new Error(`New loadouts upsert failed: ${error.message}`);
     if (upserted) {
       for (const remote of upserted) {
         const local = newLoadouts.find(
@@ -282,22 +225,128 @@ async function pushCharacterDirect(characterId: number): Promise<void> {
       }
     }
   }
+}
 
-  // ---------- 5) Clear the character's dirty flag ----------
-  // Only clear it if no new edits landed while we were pushing. If the
-  // user edited during the push, leave isDirty = true so the loop runs
-  // again (the pending flag will already be set by the mutation).
-  const freshChar = await db.characters.get(characterId);
-  if (freshChar && freshChar.updatedAt === updatedAtAtStart) {
-    await db.characters.update(characterId, { isDirty: false });
+/* =========================
+   DIRECT PER-CHARACTER PUSH
+========================= */
+
+async function pushCharacterDirect(characterId: number): Promise<void> {
+  const remoteUserId = await waitForRemoteUserId();
+
+  const char = await db.characters.get(characterId);
+  if (!char) return;
+
+  const updatedAtAtStart = char.updatedAt;
+
+  let remoteCharId = char.remoteId;
+  let charPushOk = false;
+
+  // ---------- 1) Character row ----------
+  try {
+    const charPayload: any = {
+      user_id: remoteUserId,
+      char_name: char.charName,
+      base_stats: char.baseStats,
+      bonus_log: char.bonusLog,
+      temp_stat_bonus: char.tempStatBonus,
+      charImage: char.charImage,
+      history_sum: char.historySum,
+      schema_version: char.schemaVersion,
+      updated_at: new Date(char.updatedAt).toISOString(),
+      source: char.source ?? "web",
+      is_published: !!char.isPublished,
+      is_shared_import: !!char.isImportedShared,
+    };
+
+    if (char.tabId) {
+      const localTab = await db.tabs.get(char.tabId);
+      charPayload.tab_id = localTab?.remoteId ?? null;
+    } else {
+      charPayload.tab_id = null;
+    }
+
+    if (char.externalId) charPayload.external_id = char.externalId;
+    if (char.remoteId) charPayload.id = char.remoteId;
+
+    const conflictField = char.externalId ? "external_id" : "id";
+
+    const charUpsert = await supabase
+      .from("characters")
+      .upsert(charPayload, { onConflict: conflictField })
+      .select()
+      .single();
+
+    if (charUpsert.error) {
+      console.warn(
+        `[sync] Character upsert failed for "${char.charName}":`,
+        charUpsert.error.message
+      );
+    } else {
+      const newRemoteId = char.remoteId ?? charUpsert.data?.id;
+      if (newRemoteId) {
+        remoteCharId = newRemoteId;
+        if (!char.remoteId) {
+          await db.characters.update(characterId, { remoteId: newRemoteId });
+        }
+        charPushOk = true;
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[sync] Character upsert threw for "${char.charName}":`, err?.message ?? err);
+  }
+
+  if (!remoteCharId) {
+    throw new Error(
+      `No remoteId available for character "${char.charName}" and the upsert failed`
+    );
+  }
+
+  // ---------- 2) Children ----------
+  const childFailures: string[] = [];
+
+  try {
+    await pushEntesForCharacter(characterId, remoteCharId);
+  } catch (err: any) {
+    console.warn(`[sync] Entes push failed for "${char.charName}":`, err?.message ?? err);
+    childFailures.push("entes");
+  }
+
+  try {
+    await pushInventoryForCharacter(characterId, remoteCharId);
+  } catch (err: any) {
+    console.warn(`[sync] Inventory push failed for "${char.charName}":`, err?.message ?? err);
+    childFailures.push("inventory");
+  }
+
+  try {
+    await pushLoadoutsForCharacter(characterId, remoteCharId);
+  } catch (err: any) {
+    console.warn(`[sync] Loadouts push failed for "${char.charName}":`, err?.message ?? err);
+    childFailures.push("loadouts");
+  }
+
+  // ---------- 3) Dirty flag ----------
+  if (childFailures.length === 0 && charPushOk) {
+    const freshChar = await db.characters.get(characterId);
+    if (freshChar && freshChar.updatedAt === updatedAtAtStart) {
+      await db.characters.update(characterId, { isDirty: false });
+    }
+  }
+
+  if (childFailures.length > 0) {
+    throw new Error(`Child pushes failed: ${childFailures.join(", ")}`);
+  }
+
+  if (!charPushOk) {
+    console.warn(
+      `[sync] Character row not updated for "${char.charName}" (children synced ok)`
+    );
   }
 }
 
 /* =========================
    PER-CHARACTER SYNC QUEUE
-   ---------------------------------------------------------------
-   Ensures only one push per character is in flight at a time, with
-   coalescing of rapid edits and automatic retries on failure.
 ========================= */
 
 const characterSyncInFlight = new Set<number>();
@@ -307,8 +356,10 @@ const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY = 1000;
 
 export async function syncCharacter(characterId: number): Promise<void> {
+  console.log(`[sync] syncCharacter(${characterId}) requested`);
+
   if (characterSyncInFlight.has(characterId)) {
-    // Another pass is already running — just make sure it runs again.
+    console.log(`[sync] character ${characterId} already in flight — queuing another pass`);
     characterSyncPending.add(characterId);
     return;
   }
@@ -323,19 +374,21 @@ export async function syncCharacter(characterId: number): Promise<void> {
 
       try {
         await pushCharacterDirect(characterId);
+        console.log(`[sync] character ${characterId} pushed successfully`);
         retryCount = 0;
-      } catch (err) {
-        console.warn(`syncCharacter(${characterId}) failed:`, err);
+      } catch (err: any) {
+        console.warn(`[sync] attempt failed for character ${characterId}:`, err?.message ?? err);
 
         if (retryCount < MAX_RETRIES) {
           const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
           retryCount++;
+          console.log(`[sync] retrying character ${characterId} in ${delay}ms (attempt ${retryCount})`);
           await new Promise(r => setTimeout(r, delay));
           characterSyncPending.add(characterId);
         } else {
           console.error(
-            `syncCharacter(${characterId}): giving up after ${MAX_RETRIES} retries. ` +
-            `The next mutation or the periodic safety-net sync will retry.`
+            `[sync] giving up on character ${characterId} after ${MAX_RETRIES} retries. ` +
+            `Next edit or safety-net sync will retry.`
           );
         }
       }
@@ -346,7 +399,6 @@ export async function syncCharacter(characterId: number): Promise<void> {
   }
 }
 
-// Backwards-compatible alias — old callers used this name.
 export const syncCharacterLoadouts = syncCharacter;
 
 /* =========================
@@ -355,9 +407,15 @@ export const syncCharacterLoadouts = syncCharacter;
 
 export async function pushLocalChanges() {
   const remoteUserId = getRemoteUserId();
-  if (!remoteUserId) return;
+  if (!remoteUserId) {
+    console.warn("[sync] pushLocalChanges called but remoteUserId is null — skipping");
+    return;
+  }
 
   const dirtyCharacters = await db.characters.filter((c) => c.isDirty).toArray();
+  if (dirtyCharacters.length === 0) return;
+
+  console.log(`[sync] pushing ${dirtyCharacters.length} dirty character(s)`);
   await Promise.all(dirtyCharacters.map(c => syncCharacter(c.id!)));
 }
 
@@ -439,7 +497,7 @@ export async function pushTabs() {
 }
 
 /* =========================
-   DUPLICATE CLEANUP (LOCAL ONLY)
+   DUPLICATE CLEANUP
 ========================= */
 
 async function deduplicateCharacters() {
@@ -713,9 +771,6 @@ export async function pullCharactersExport() {
   for (const id of affectedCharacterIds) {
     await characterManager.recalculateCharacterBonuses(id);
     await characterManager.emitEntesUpdated(id);
-    // Push each affected character right away. This ensures fresh
-    // Discord imports land on the server without waiting for the
-    // next debounced sync.
     void syncCharacter(id);
   }
 }

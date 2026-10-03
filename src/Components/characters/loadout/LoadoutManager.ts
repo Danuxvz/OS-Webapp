@@ -1,7 +1,8 @@
 import { db } from "../database/db";
 import type { Loadout } from "../../../types";
 import type { DBLoadout } from "../database/db";
-import { syncCharacterLoadouts } from "../../../services/Sync";
+import { syncCharacter } from "../../../services/Sync";
+import { triggerAutoSync } from "../../../services/SyncScheduler";
 
 function dbToUI(row: DBLoadout): Loadout {
   return {
@@ -26,6 +27,25 @@ function uiToDB(loadout: Loadout): DBLoadout {
   };
 }
 
+/**
+ * Every loadout mutation marks the owning character dirty, then fires
+ * TWO sync paths so the change can't get lost:
+ *
+ *   1. syncCharacter(id)      — direct per-character push, immediate.
+ *   2. triggerAutoSync(true)  — fires the full-sync path right now as
+ *                                a belt-and-suspenders fallback. If the
+ *                                direct push silently failed (auth race,
+ *                                transient network, etc.) this catches
+ *                                it within the same tick.
+ *
+ * Both paths end up calling syncCharacter under the hood, and the
+ * in-flight/pending queue coalesces them so we never double-push.
+ */
+function kickCharacterSync(characterId: number) {
+  void syncCharacter(characterId);
+  triggerAutoSync(true);
+}
+
 export const loadoutManager = {
   async getByCharacter(characterId: number): Promise<Loadout[]> {
     const rows = await db.loadouts
@@ -45,7 +65,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    void syncCharacterLoadouts(loadout.characterId);
+    kickCharacterSync(loadout.characterId);
 
     return { ...loadout, id: String(id) };
   },
@@ -77,8 +97,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    // Fire-and-forget direct push for this character's loadouts.
-    void syncCharacterLoadouts(loadout.characterId);
+    kickCharacterSync(loadout.characterId);
   },
 
   async delete(loadoutId: string): Promise<void> {
@@ -92,7 +111,7 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    void syncCharacterLoadouts(loadout.characterId);
+    kickCharacterSync(loadout.characterId);
   },
 
   async markLoadoutDeleted(loadoutId: string): Promise<void> {
@@ -111,6 +130,6 @@ export const loadoutManager = {
       updatedAt: Date.now(),
     });
 
-    void syncCharacterLoadouts(loadout.characterId);
+    kickCharacterSync(loadout.characterId);
   },
 };
