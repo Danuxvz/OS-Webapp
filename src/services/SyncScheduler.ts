@@ -58,8 +58,6 @@ export function triggerAutoSync(immediate = false) {
 ========================= */
 
 if (typeof window !== "undefined") {
-  // Periodic safety net. If the user leaves the tab open for a long time, we want to make sure
-  // that any pending changes get pushed eventually, even if they never trigger a direct sync.
   window.setInterval(() => {
     void performSync();
   }, 30000);
@@ -71,31 +69,57 @@ if (typeof window !== "undefined") {
 
 /* =========================
    VISIBILITY HANDLER
+   ---------------------------------------------------------------
+   When the tab comes back to the foreground:
+     1. Refresh the auth session.
+     2. Flush every dirty character (force-clears stuck flags).
+
+   Debounced: some browsers fire `visibilitychange → visible`
+   multiple times in quick succession (we saw 3 events in a row in
+   the logs), and each one would kick off a full sync pass. A short
+   guard prevents the pile-up.
 ========================= */
+
+let visibilityRecoveryInFlight = false;
+let lastVisibilityRecovery = 0;
+const VISIBILITY_DEBOUNCE_MS = 1000;
 
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
 
+    const now = Date.now();
+    if (visibilityRecoveryInFlight) return;
+    if (now - lastVisibilityRecovery < VISIBILITY_DEBOUNCE_MS) return;
+
+    visibilityRecoveryInFlight = true;
+    lastVisibilityRecovery = now;
+
     console.log("[sync] tab became visible — recovering sync");
 
     void (async () => {
       try {
-        // Best-effort token refresh. If this fails, the next write will
-        // trigger its own refresh via the serialized auth lock.
         const { data } = await supabase.auth.getSession();
         if (data.session) {
           await supabase.auth.refreshSession().catch((err) => {
-            console.warn("[sync] visibility refresh failed (non-fatal):", err?.message ?? err);
+            console.warn(
+              "[sync] visibility refresh failed (non-fatal):",
+              err?.message ?? err
+            );
           });
         }
       } catch (err: any) {
-        console.warn("[sync] visibility refresh threw (non-fatal):", err?.message ?? err);
+        console.warn(
+          "[sync] visibility refresh threw (non-fatal):",
+          err?.message ?? err
+        );
       }
 
       // Give the browser a tick to finish waking up, then flush.
       setTimeout(() => {
-        void flushPendingSyncs();
+        void flushPendingSyncs().finally(() => {
+          visibilityRecoveryInFlight = false;
+        });
       }, 250);
     })();
   });

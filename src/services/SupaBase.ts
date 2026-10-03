@@ -12,14 +12,69 @@ function serializedAuthLock<R>(
   _acquireTimeout: number,
   fn: () => Promise<R>
 ): Promise<R> {
-  // Chain every call. `.then(fn, fn)` ensures fn runs whether the
-  // previous link resolved or rejected, so a failure never poisons
-  // the queue.
   const next = authLockChain.then(fn, fn);
-  // Swallow the result for the chain pointer so rejections don't
-  // propagate to the next waiter. The caller gets `next` directly.
   authLockChain = next.catch(() => undefined);
   return next;
+}
+
+/* =========================
+   INSTRUMENTED FETCH
+========================= */
+
+const activeAbortControllers = new Set<AbortController>();
+
+const FETCH_TIMEOUT_MS = 12000;
+
+function instrumentedFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit
+): Promise<Response> {
+  const controller = new AbortController();
+  activeAbortControllers.add(controller);
+
+  const timeoutId = setTimeout(() => {
+    try {
+      controller.abort(new DOMException("Request timed out", "TimeoutError"));
+    } catch {}
+    activeAbortControllers.delete(controller);
+  }, FETCH_TIMEOUT_MS);
+
+  // Link to any externally provided signal (Supabase may pass one).
+  if (init?.signal) {
+    if (init.signal.aborted) {
+      controller.abort();
+    } else {
+      init.signal.addEventListener(
+        "abort",
+        () => {
+          try { controller.abort(); } catch {}
+        },
+        { once: true }
+      );
+    }
+  }
+
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => {
+    clearTimeout(timeoutId);
+    activeAbortControllers.delete(controller);
+  });
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "hidden") return;
+    if (activeAbortControllers.size === 0) return;
+
+    // We're going into the background. Cancel anything in flight so
+    // the socket gets closed cleanly instead of being parked dead.
+    console.log(
+      `[supabase] tab hidden — aborting ${activeAbortControllers.size} in-flight request(s)`
+    );
+    for (const c of activeAbortControllers) {
+      try { c.abort(new DOMException("Tab hidden", "AbortError")); } catch {}
+    }
+    activeAbortControllers.clear();
+  });
 }
 
 /* =========================
@@ -35,6 +90,9 @@ export const supabase = createClient(
       persistSession: true,
       detectSessionInUrl: true,
       lock: serializedAuthLock,
+    },
+    global: {
+      fetch: instrumentedFetch,
     },
   }
 );
