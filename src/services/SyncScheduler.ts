@@ -4,7 +4,11 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let isSyncing = false;
 let pendingSync = false;
 
-const SYNC_DELAY = 15000;
+// Short debounce so nothing sits around long. The direct per-character
+// sync (syncCharacter) handles loadout edits and other immediate pushes
+// anyway, so this is mostly a safety net for mutations that only call
+// triggerAutoSync().
+const SYNC_DELAY = 3000;
 
 async function performSync() {
   if (isSyncing) {
@@ -23,7 +27,6 @@ async function performSync() {
   } finally {
     isSyncing = false;
 
-    // If another sync was requested while we were running, run it now.
     if (pendingSync) {
       pendingSync = false;
       setTimeout(() => {
@@ -36,7 +39,6 @@ async function performSync() {
 export function triggerAutoSync(immediate = false) {
   if (immediate) {
     if (isSyncing) {
-      // A sync is already in flight — this edit will be picked up by the "run again" branch in performSync() once it finishes.
       pendingSync = true;
       return;
     }
@@ -52,4 +54,18 @@ export function triggerAutoSync(immediate = false) {
     syncTimer = null;
     void performSync();
   }, SYNC_DELAY);
+}
+
+/* =========================
+   SAFETY NETS
+========================= */
+
+if (typeof window !== "undefined") {
+  window.setInterval(() => {
+    void performSync();
+  }, 30000);
+
+  window.addEventListener("online", () => {
+    void performSync();
+  });
 }

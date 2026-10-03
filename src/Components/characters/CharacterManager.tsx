@@ -117,6 +117,8 @@ class CharacterManager {
       ...createSyncMeta(),
     });
 
+    triggerAutoSync();
+
     const fresh = await this.getCharacter(characterId);
     this.emit("characterCreated", fresh);
     return characterId;
@@ -151,6 +153,11 @@ class CharacterManager {
           throw new Error(`Ente ${u.id} not found for character ${characterId}`);
         }
       }
+    });
+
+    await db.characters.update(characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
     });
 
     triggerAutoSync();
@@ -204,6 +211,16 @@ class CharacterManager {
       inv.isDirty = true;
     });
 
+    // Mark the owning character as dirty too — pushLocalChanges filters
+    // by character.isDirty, so without this the inventory change would
+    // never be uploaded.
+    await db.characters.update(characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
+    triggerAutoSync();
+
     const freshInv = await this.getInventory(characterId);
     this.emit("inventoryUpdated", { characterId, inventory: freshInv });
   }
@@ -240,6 +257,11 @@ class CharacterManager {
       });
     }
 
+    await db.characters.update(characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
     triggerAutoSync();
 
     await this.recalculateCharacterBonuses(characterId);
@@ -273,6 +295,12 @@ class CharacterManager {
         updatedAt: Date.now(),
       });
     }
+
+    await db.characters.update(characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
     triggerAutoSync();
 
     await this.recalculateCharacterBonuses(characterId);
@@ -306,6 +334,12 @@ class CharacterManager {
         updatedAt: Date.now(),
         isDirty: true,
       });
+
+    await db.characters.update(characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
     triggerAutoSync();
 
     if (updates.unlockLevel !== undefined || updates.amount !== undefined) {
@@ -406,6 +440,13 @@ class CharacterManager {
       }
     });
 
+    await db.characters.update(characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
+    triggerAutoSync();
+
     await this.recalculateCharacterBonuses(characterId);
 
     const entes = await this.getEntes(characterId);
@@ -434,7 +475,7 @@ class CharacterManager {
       .filter((e) => !e.isDeleted)
       .toArray();
 
-    // FIX: share the unlock level across E-variant siblings (E005/E052/E060),
+    // Share the unlock level across E-variant siblings (E005/E052/E060),
     // exactly the way EntesSection (UI) does.
     const groupMaxAmount = new Map<string, number>();
     for (const ente of entes) {
@@ -519,6 +560,12 @@ class CharacterManager {
       data,
       ...createSyncMeta(),
     });
+
+    await db.characters.update(characterId, {
+      isDirty: true,
+      updatedAt: Date.now(),
+    });
+
     triggerAutoSync();
     return id;
   }
