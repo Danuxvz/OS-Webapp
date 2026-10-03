@@ -55,13 +55,24 @@ function createDefaultLoadoutData() {
 }
 
 /* =========================
-   WAIT FOR REMOTE USER
+   GLOBAL WRITE MUTEX
    ---------------------------------------------------------------
-   initSupabaseAuth() is awaited in main.tsx before the app renders,
-   but if the users-table insert fails (RLS, transient network, etc.)
-   remoteUserId stays null and every push silently bails. This helper
-   polls for up to 30s so a slow/eventual auth still succeeds instead
-   of dropping the edit on the floor.
+   Serializes every Supabase write issued by this tab. Combined with
+   the serialized auth lock in SupaBase.ts, this guarantees no two
+   writes ever overlap, which is what triggers the Navigator
+   LockManager failures.
+========================= */
+
+let writeLockChain: Promise<unknown> = Promise.resolve();
+
+function withWriteLock<R>(fn: () => Promise<R>): Promise<R> {
+  const next = writeLockChain.then(fn, fn);
+  writeLockChain = next.catch(() => undefined);
+  return next;
+}
+
+/* =========================
+   WAIT FOR REMOTE USER
 ========================= */
 
 async function waitForRemoteUserId(timeoutMs = 30000): Promise<string> {
@@ -231,7 +242,7 @@ async function pushLoadoutsForCharacter(characterId: number, remoteCharId: strin
    DIRECT PER-CHARACTER PUSH
 ========================= */
 
-async function pushCharacterDirect(characterId: number): Promise<void> {
+async function pushCharacterDirectInner(characterId: number): Promise<void> {
   const remoteUserId = await waitForRemoteUserId();
 
   const char = await db.characters.get(characterId);
@@ -345,21 +356,27 @@ async function pushCharacterDirect(characterId: number): Promise<void> {
   }
 }
 
+async function pushCharacterDirect(characterId: number): Promise<void> {
+  return withWriteLock(() => pushCharacterDirectInner(characterId));
+}
+
 /* =========================
    PER-CHARACTER SYNC QUEUE
+   ---------------------------------------------------------------
+   Bounded retries (max 3 attempts) so a permanently failing
+   character can't wedge the loop. If a new edit lands during a pass
+   (pending flag set), we schedule one more pass via setTimeout
+   instead of looping in place.
 ========================= */
 
 const characterSyncInFlight = new Set<number>();
 const characterSyncPending = new Set<number>();
 
-const MAX_RETRIES = 3;
+const MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY = 1000;
 
 export async function syncCharacter(characterId: number): Promise<void> {
-  console.log(`[sync] syncCharacter(${characterId}) requested`);
-
   if (characterSyncInFlight.has(characterId)) {
-    console.log(`[sync] character ${characterId} already in flight — queuing another pass`);
     characterSyncPending.add(characterId);
     return;
   }
@@ -367,35 +384,37 @@ export async function syncCharacter(characterId: number): Promise<void> {
   characterSyncInFlight.add(characterId);
 
   try {
-    let retryCount = 0;
-
-    do {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       characterSyncPending.delete(characterId);
 
       try {
         await pushCharacterDirect(characterId);
         console.log(`[sync] character ${characterId} pushed successfully`);
-        retryCount = 0;
+        return;
       } catch (err: any) {
-        console.warn(`[sync] attempt failed for character ${characterId}:`, err?.message ?? err);
+        console.warn(
+          `[sync] attempt ${attempt}/${MAX_ATTEMPTS} failed for character ${characterId}:`,
+          err?.message ?? err
+        );
 
-        if (retryCount < MAX_RETRIES) {
-          const delay = RETRY_BASE_DELAY * Math.pow(2, retryCount);
-          retryCount++;
-          console.log(`[sync] retrying character ${characterId} in ${delay}ms (attempt ${retryCount})`);
-          await new Promise(r => setTimeout(r, delay));
-          characterSyncPending.add(characterId);
-        } else {
+        if (attempt >= MAX_ATTEMPTS) {
           console.error(
-            `[sync] giving up on character ${characterId} after ${MAX_RETRIES} retries. ` +
-            `Next edit or safety-net sync will retry.`
+            `[sync] giving up on character ${characterId} after ${MAX_ATTEMPTS} attempts.`
           );
+          return;
         }
+
+        const delay = RETRY_BASE_DELAY * Math.pow(2, attempt - 1);
+        await new Promise(r => setTimeout(r, delay));
       }
-    } while (characterSyncPending.has(characterId));
+    }
   } finally {
     characterSyncInFlight.delete(characterId);
-    characterSyncPending.delete(characterId);
+  }
+
+  if (characterSyncPending.delete(characterId)) {
+    // A new edit landed during the pass — run one more time.
+    setTimeout(() => { void syncCharacter(characterId); }, 0);
   }
 }
 

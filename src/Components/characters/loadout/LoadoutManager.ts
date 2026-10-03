@@ -2,7 +2,6 @@ import { db } from "../database/db";
 import type { Loadout } from "../../../types";
 import type { DBLoadout } from "../database/db";
 import { syncCharacter } from "../../../services/Sync";
-import { triggerAutoSync } from "../../../services/SyncScheduler";
 
 function dbToUI(row: DBLoadout): Loadout {
   return {
@@ -28,22 +27,16 @@ function uiToDB(loadout: Loadout): DBLoadout {
 }
 
 /**
- * Every loadout mutation marks the owning character dirty, then fires
- * TWO sync paths so the change can't get lost:
- *
- *   1. syncCharacter(id)      — direct per-character push, immediate.
- *   2. triggerAutoSync(true)  — fires the full-sync path right now as
- *                                a belt-and-suspenders fallback. If the
- *                                direct push silently failed (auth race,
- *                                transient network, etc.) this catches
- *                                it within the same tick.
- *
- * Both paths end up calling syncCharacter under the hood, and the
- * in-flight/pending queue coalesces them so we never double-push.
+ * Kick the per-character sync. We deliberately do NOT also call
+ * triggerAutoSync(true) here — that used to fire a full-sync pass at
+ * the same instant as the direct push, which caused two concurrent
+ * Supabase requests that fought over the Navigator LockManager auth
+ * lock. syncCharacter alone is enough for loadout edits; the
+ * debounced/interval fallback in SyncScheduler picks up anything that
+ * slips through.
  */
 function kickCharacterSync(characterId: number) {
   void syncCharacter(characterId);
-  triggerAutoSync(true);
 }
 
 export const loadoutManager = {

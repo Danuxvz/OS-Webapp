@@ -19,7 +19,6 @@ async function performSync() {
   isSyncing = true;
 
   try {
-    console.log("Auto-sync triggered");
     await pushTabs();
     await pushLocalChanges();
   } catch (err) {
