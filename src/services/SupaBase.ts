@@ -2,8 +2,10 @@ import { createClient, type Session, type User } from "@supabase/supabase-js";
 import { db } from "../Components/characters/database/db";
 
 /* =========================
-   AUTH LOCK
+   AUTH LOCK (with hard timeout)
 ========================= */
+
+const AUTH_LOCK_TIMEOUT_MS = 10000;
 
 let authLockChain: Promise<unknown> = Promise.resolve();
 
@@ -12,7 +14,21 @@ function serializedAuthLock<R>(
   _acquireTimeout: number,
   fn: () => Promise<R>
 ): Promise<R> {
-  const next = authLockChain.then(fn, fn);
+  const wrap = () => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<R>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(
+          `Auth lock operation timed out after ${AUTH_LOCK_TIMEOUT_MS}ms`
+        ));
+      }, AUTH_LOCK_TIMEOUT_MS);
+    });
+    return Promise.race([fn(), timeout]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  };
+
+  const next = authLockChain.then(wrap, wrap);
   authLockChain = next.catch(() => undefined);
   return next;
 }
@@ -22,7 +38,6 @@ function serializedAuthLock<R>(
 ========================= */
 
 const activeAbortControllers = new Set<AbortController>();
-
 const FETCH_TIMEOUT_MS = 12000;
 
 function instrumentedFetch(
@@ -39,7 +54,6 @@ function instrumentedFetch(
     activeAbortControllers.delete(controller);
   }, FETCH_TIMEOUT_MS);
 
-  // Link to any externally provided signal (Supabase may pass one).
   if (init?.signal) {
     if (init.signal.aborted) {
       controller.abort();
@@ -63,17 +77,20 @@ function instrumentedFetch(
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "hidden") return;
-    if (activeAbortControllers.size === 0) return;
 
-    // We're going into the background. Cancel anything in flight so
-    // the socket gets closed cleanly instead of being parked dead.
-    console.log(
-      `[supabase] tab hidden — aborting ${activeAbortControllers.size} in-flight request(s)`
-    );
-    for (const c of activeAbortControllers) {
-      try { c.abort(new DOMException("Tab hidden", "AbortError")); } catch {}
+    // 1. Abort every in-flight fetch 
+    if (activeAbortControllers.size > 0) {
+      console.log(
+        `[supabase] tab hidden — aborting ${activeAbortControllers.size} in-flight request(s)`
+      );
+      for (const c of activeAbortControllers) {
+        try { c.abort(new DOMException("Tab hidden", "AbortError")); } catch {}
+      }
+      activeAbortControllers.clear();
     }
-    activeAbortControllers.clear();
+
+    // 2. Reset the auth lock chain. 
+    authLockChain = Promise.resolve();
   });
 }
 
