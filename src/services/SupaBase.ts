@@ -2,149 +2,171 @@ import { createClient, type Session, type User } from "@supabase/supabase-js";
 import { db } from "../Components/characters/database/db";
 
 /* =========================
-	 CLIENT
+   AUTH LOCK
+========================= */
+
+let authLockChain: Promise<unknown> = Promise.resolve();
+
+function serializedAuthLock<R>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<R>
+): Promise<R> {
+  // Chain every call. `.then(fn, fn)` ensures fn runs whether the
+  // previous link resolved or rejected, so a failure never poisons
+  // the queue.
+  const next = authLockChain.then(fn, fn);
+  // Swallow the result for the chain pointer so rejections don't
+  // propagate to the next waiter. The caller gets `next` directly.
+  authLockChain = next.catch(() => undefined);
+  return next;
+}
+
+/* =========================
+   CLIENT
 ========================= */
 
 export const supabase = createClient(
-	import.meta.env.VITE_SUPABASE_URL,
-	import.meta.env.VITE_SUPABASE_ANON_KEY,
-	import.meta.env.VITE_AZURE_REDIRECT
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+      lock: serializedAuthLock,
+    },
+  }
 );
 
 let currentSession: Session | null = null;
 let remoteUserId: string | null = null;
 
 /* =========================
-	 AUTH
+   AUTH
 ========================= */
 
 export async function initSupabaseAuth(): Promise<User | null> {
-	const { data } = await supabase.auth.getSession();
-	currentSession = data.session;
+  const { data } = await supabase.auth.getSession();
+  currentSession = data.session;
 
-	if (currentSession) {
-		await ensureLocalUser();
-		await ensureRemoteUser();
-	}
+  if (currentSession) {
+    await ensureLocalUser();
+    await ensureRemoteUser();
+  }
 
-	supabase.auth.onAuthStateChange(async (_event, session) => {
-		currentSession = session;
+  supabase.auth.onAuthStateChange(async (_event, session) => {
+    currentSession = session;
 
-		if (session) {
-			await ensureLocalUser();
-			await ensureRemoteUser();
-		} else {
-			remoteUserId = null;
-		}
-	});
+    if (session) {
+      await ensureLocalUser();
+      await ensureRemoteUser();
+    } else {
+      remoteUserId = null;
+    }
+  });
 
-	return currentSession?.user ?? null;
+  return currentSession?.user ?? null;
 }
 
 export async function loginWithDiscord() {
-	await supabase.auth.signInWithOAuth({
-		provider: "discord",
-		options: { redirectTo: "VITE_AZURE_REDIRECT" }
-	});
+  await supabase.auth.signInWithOAuth({
+    provider: "discord",
+    options: { redirectTo: import.meta.env.VITE_AZURE_REDIRECT },
+  });
 }
 
 export async function logout() {
-	await supabase.auth.signOut();
+  await supabase.auth.signOut();
 }
 
 export function getCurrentUser(): User | null {
-	return currentSession?.user ?? null;
+  return currentSession?.user ?? null;
 }
 
 export function getDiscordId(): string | null {
-	const user = getCurrentUser();
-	if (!user) return null;
-	return user.user_metadata?.provider_id || user.id;
+  const user = getCurrentUser();
+  if (!user) return null;
+  return user.user_metadata?.provider_id || user.id;
 }
 
 export function getRemoteUserId(): string | null {
-	return remoteUserId;
+  return remoteUserId;
 }
 
 /* =========================
-	 LOCAL USER ENSURE
+   LOCAL USER ENSURE
 ========================= */
 
 async function ensureLocalUser() {
-	const discordId = getDiscordId();
-	if (!discordId) return;
+  const discordId = getDiscordId();
+  if (!discordId) return;
 
-	const existing = await db.users.get(discordId);
-	if (!existing) {
-		await db.users.put({
-			discordId,
-			updatedAt: Date.now(),
-			isDirty: true,
-			migratedFromBlob: false
-		});
-	}
+  const existing = await db.users.get(discordId);
+  if (!existing) {
+    await db.users.put({
+      discordId,
+      updatedAt: Date.now(),
+      isDirty: true,
+      migratedFromBlob: false,
+    });
+  }
 }
 
 /* =========================
-	 REMOTE USER ENSURE
+   REMOTE USER ENSURE
 ========================= */
 
 async function ensureRemoteUser() {
-	const discordId = getDiscordId();
-	if (!discordId) return;
+  const discordId = getDiscordId();
+  if (!discordId) return;
 
-	const { data: existing } = await supabase
-		.from("users")
-		.select("*")
-		.eq("discord_id", discordId)
-		.single();
+  const { data: existing } = await supabase
+    .from("users")
+    .select("*")
+    .eq("discord_id", discordId)
+    .single();
 
-	if (existing) {
-		remoteUserId = existing.id;
-		return;
-	}
+  if (existing) {
+    remoteUserId = existing.id;
+    return;
+  }
 
-	const { data } = await supabase
-		.from("users")
-		.insert({ discord_id: discordId })
-		.select()
-		.single();
+  const { data } = await supabase
+    .from("users")
+    .insert({ discord_id: discordId })
+    .select()
+    .single();
 
-	remoteUserId = data?.id ?? null;
+  remoteUserId = data?.id ?? null;
 }
 
 /* =========================
-	 GET LOGGED IN DISCORD USER
+   GET LOGGED IN DISCORD USER
 ========================= */
 
 export interface LoggedInDiscordUser {
-	id: string;
-	username: string;
-	avatarUrl: string;
+  id: string;
+  username: string;
+  avatarUrl: string;
 }
 
 export async function getLoggedInDiscordUser(): Promise<LoggedInDiscordUser | null> {
-	const user = getCurrentUser();
-	if (!user) return null;
+  const user = getCurrentUser();
+  if (!user) return null;
 
-	// Build avatar URL from Discord metadata
-	const discordId = user.user_metadata?.provider_id || user.id;
-	const username = user.user_metadata?.full_name || user.user_metadata?.user_name || user.email || "Discord User";
-	const avatarHash = user.user_metadata?.avatar_url || user.user_metadata?.avatar || null;
+  const discordId = user.user_metadata?.provider_id || user.id;
+  const username =
+    user.user_metadata?.full_name ||
+    user.user_metadata?.user_name ||
+    user.email ||
+    "Discord User";
+  const avatarHash =
+    user.user_metadata?.avatar_url || user.user_metadata?.avatar || null;
 
-	let avatarUrl = "";
+  const avatarUrl = avatarHash
+    ? `${avatarHash}`
+    : `https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/67d00cf7266d2c75571aebde_Example.svg`;
 
-	if (avatarHash) {
-		// Discord CDN avatar format
-		avatarUrl = `${avatarHash}`;
-	} else {
-		// fallback: default avatar
-		avatarUrl = `https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/67d00cf7266d2c75571aebde_Example.svg`;
-	}
-
-	return {
-		id: discordId,
-		username,
-		avatarUrl
-	};
+  return { id: discordId, username, avatarUrl };
 }
