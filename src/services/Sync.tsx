@@ -33,18 +33,39 @@ function parseInventoryBlob(blob: string) {
 }
 
 /**
- * Reject a promise if it hasn't settled within `ms`. This is the key
- * defence against background-tab freezes: if a fetch is orphaned while
- * the tab is suspended, we don't wait forever — we give up and let the
- * retry loop try again on the next tick.
+ * Race a factory against a hard timeout. Unlike Promise.race, if the
+ * factory rejects BEFORE the timeout fires, we surface that original
+ * error instead of swallowing it — critical for debugging, because
+ * otherwise every failure looks like "timed out".
  */
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<T>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => {
-    if (timer) clearTimeout(timer);
+function withTimeout<T>(
+  factory: () => Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+
+    factory().then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
   });
 }
 
@@ -371,7 +392,7 @@ async function pushCharacterDirectInner(characterId: number): Promise<void> {
   }
 }
 
-const PUSH_TIMEOUT_MS = 15000;
+const PUSH_TIMEOUT_MS = 25000;
 
 async function pushCharacterDirect(characterId: number): Promise<void> {
   // Wrap the whole push in a write lock AND a hard timeout. If a fetch
@@ -379,7 +400,7 @@ async function pushCharacterDirect(characterId: number): Promise<void> {
   // lock releases, and the caller's retry loop keeps moving.
   return withWriteLock(() =>
     withTimeout(
-      pushCharacterDirectInner(characterId),
+      () => pushCharacterDirectInner(characterId),
       PUSH_TIMEOUT_MS,
       `pushCharacterDirect(${characterId})`
     )

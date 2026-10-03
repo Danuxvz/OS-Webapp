@@ -2,35 +2,16 @@ import { createClient, type Session, type User } from "@supabase/supabase-js";
 import { db } from "../Components/characters/database/db";
 
 /* =========================
-   AUTH LOCK (with hard timeout)
+   PASS-THROUGH AUTH LOCK
+   ---------------------------------------------------------------
 ========================= */
 
-const AUTH_LOCK_TIMEOUT_MS = 10000;
-
-let authLockChain: Promise<unknown> = Promise.resolve();
-
-function serializedAuthLock<R>(
+function passthroughLock<R>(
   _name: string,
   _acquireTimeout: number,
   fn: () => Promise<R>
 ): Promise<R> {
-  const wrap = () => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeout = new Promise<R>((_, reject) => {
-      timer = setTimeout(() => {
-        reject(new Error(
-          `Auth lock operation timed out after ${AUTH_LOCK_TIMEOUT_MS}ms`
-        ));
-      }, AUTH_LOCK_TIMEOUT_MS);
-    });
-    return Promise.race([fn(), timeout]).finally(() => {
-      if (timer) clearTimeout(timer);
-    });
-  };
-
-  const next = authLockChain.then(wrap, wrap);
-  authLockChain = next.catch(() => undefined);
-  return next;
+  return fn();
 }
 
 /* =========================
@@ -78,7 +59,6 @@ if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "hidden") return;
 
-    // 1. Abort every in-flight fetch 
     if (activeAbortControllers.size > 0) {
       console.log(
         `[supabase] tab hidden — aborting ${activeAbortControllers.size} in-flight request(s)`
@@ -88,9 +68,6 @@ if (typeof document !== "undefined") {
       }
       activeAbortControllers.clear();
     }
-
-    // 2. Reset the auth lock chain. 
-    authLockChain = Promise.resolve();
   });
 }
 
@@ -106,7 +83,7 @@ export const supabase = createClient(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true,
-      lock: serializedAuthLock,
+      lock: passthroughLock,
     },
     global: {
       fetch: instrumentedFetch,
